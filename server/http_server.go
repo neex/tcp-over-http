@@ -39,9 +39,8 @@ func RunHTTPServer(config *Config) error {
 
 func makeHTTPMux(config *Config) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, config.StaticDir)
-	})
+	static := http.FileServer(http.Dir(config.StaticDir))
+	mux.Handle("/", static)
 
 	mux.HandleFunc(fmt.Sprintf("/establish/%s", config.Token), func(w http.ResponseWriter, r *http.Request) {
 		hj, ok := w.(http.Hijacker)
