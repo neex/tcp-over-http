@@ -18,8 +18,11 @@ func RunHTTPServer(config *Config) error {
 	if config.IsHTTPS() {
 		if config.Domain != "" {
 			srv.TLSConfig = &tls.Config{
-				NameToCertificate: map[string]*tls.Certificate{
-					config.Domain: &config.Certificate,
+				GetCertificate: func(info *tls.ClientHelloInfo) (cert *tls.Certificate, err error) {
+					if info.ServerName == config.Domain {
+						return &config.Certificate, nil
+					}
+					return nil, nil
 				},
 			}
 		} else {
