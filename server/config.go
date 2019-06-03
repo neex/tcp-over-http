@@ -10,13 +10,14 @@ import (
 )
 
 type Config struct {
-	ListenAddr  string        `yaml:"listen_addr"`
-	Token       string        `yaml:"token"`
-	StaticDir   string        `yaml:"static_dir"`
-	Domain      string        `yaml:"domain"`
-	CertPath    string        `yaml:"cert_path"`
-	KeyPath     string        `yaml:"key_path"`
-	DialTimeout time.Duration `yaml:"dial_timeout"`
+	ListenAddr     string        `yaml:"listen_addr"`
+	Token          string        `yaml:"token"`
+	StaticDir      string        `yaml:"static_dir"`
+	Domain         string        `yaml:"domain"`
+	CertPath       string        `yaml:"cert_path"`
+	KeyPath        string        `yaml:"key_path"`
+	RedirectorAddr string        `yaml:"redirector_addr"`
+	DialTimeout    time.Duration `yaml:"dial_timeout"`
 
 	Certificate tls.Certificate `yaml:"-"`
 }
