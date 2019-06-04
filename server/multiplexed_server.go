@@ -67,17 +67,11 @@ func processClient(ctx context.Context, conn net.Conn, dial DialContextFunc) err
 
 	var errStr *string
 	if err != nil {
-		log.Printf("Connection to %v://%v failed: %v", req.Network, req.Address, err)
 		errStr = new(string)
 		*errStr = err.Error()
-	} else {
-		log.Printf("Connection to %v://%v established", req.Network, req.Address)
 	}
 
 	writeErr := protocol.WritePacket(newCtx, conn, &protocol.ConnectionResponse{Err: errStr})
-	if writeErr != nil {
-		log.Printf("Writing response to client failed: %v", writeErr)
-	}
 	if err != nil {
 		return err
 	}

@@ -30,9 +30,13 @@ func RunHTTPServer(config *Config) error {
 func makeHTTPMux(config *Config) http.Handler {
 	mux := http.NewServeMux()
 	static := http.FileServer(http.Dir(config.StaticDir))
-	mux.Handle("/", static)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%v: %v", r.RemoteAddr, r.RequestURI)
+		static.ServeHTTP(w, r)
+	})
 
 	mux.HandleFunc(fmt.Sprintf("/establish/%s", config.Token), func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%v: proxy request", r.RemoteAddr)
 		hj, ok := w.(http.Hijacker)
 		if !ok {
 			log.Print("Connection doesn't support http.Hijacker")
