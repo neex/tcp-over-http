@@ -88,11 +88,13 @@ func processClient(ctx context.Context, conn net.Conn, dial DialContextFunc) err
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
+		defer wg.Done()
 		_, _ = io.Copy(conn, upstreamConn)
 		_ = conn.Close()
 	}()
 
 	go func() {
+		defer wg.Done()
 		_, _ = io.Copy(upstreamConn, conn)
 		_ = upstreamConn.Close()
 	}()

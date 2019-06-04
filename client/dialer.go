@@ -43,7 +43,7 @@ func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.
 	log.Printf("Connection %v: connecting to upstream", connId)
 	mc, err := d.c.Connect()
 	if err != nil {
-		log.Printf("Connection %v: error while connecting to upstream: %v", err)
+		log.Printf("Connection %v: error while connecting to upstream: %v", connId, err)
 		return nil, err
 	}
 
