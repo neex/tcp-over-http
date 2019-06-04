@@ -1,8 +1,6 @@
 package server
 
-import (
-	"net/http"
-)
+import "net/http"
 
 func RunRedirectorServer(config *Config) error {
 	return http.ListenAndServe(config.RedirectorAddr, CheckHost(config, http.HandlerFunc(

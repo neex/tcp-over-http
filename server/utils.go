@@ -1,8 +1,9 @@
 package server
 
 import (
-	"log"
 	"net/http"
+
+	log "github.com/sirupsen/logrus"
 )
 
 func CheckHost(config *Config, handler http.Handler) http.Handler {
@@ -12,7 +13,10 @@ func CheckHost(config *Config, handler http.Handler) http.Handler {
 
 	return http.HandlerFunc(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Host != config.Domain {
-			log.Printf("request with wrong host: %v", r.Host)
+			log.WithFields(log.Fields{
+				"host":        r.Host,
+				"remote_addr": r.RemoteAddr,
+			}).Warn("request with wrong host")
 			w.WriteHeader(404)
 			return
 		}

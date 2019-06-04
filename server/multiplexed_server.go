@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"sync"
 
@@ -34,13 +33,16 @@ func RunMultiplexedServer(ctx context.Context, conn net.Conn, dial DialContextFu
 
 	for {
 		client, err := sess.Accept()
+		if err == io.EOF {
+			return nil
+		}
+
 		if err != nil {
 			return fmt.Errorf("error while accept: %v", err)
 		}
+
 		go func() {
-			if err := processClient(newCtx, client, dial); err != nil {
-				log.Printf("Error handling client: %v", err)
-			}
+			_ = processClient(newCtx, client, dial)
 		}()
 	}
 }

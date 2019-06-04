@@ -4,9 +4,10 @@ import (
 	"bufio"
 	"crypto/tls"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
+
+	log "github.com/sirupsen/logrus"
 )
 
 func RunHTTPServer(config *Config) error {
@@ -31,22 +32,29 @@ func makeHTTPMux(config *Config) http.Handler {
 	mux := http.NewServeMux()
 	static := http.FileServer(http.Dir(config.StaticDir))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%v: %v", r.RemoteAddr, r.RequestURI)
+		log.WithFields(log.Fields{
+			"remote_addr": r.RemoteAddr,
+			"remote_uri":  r.RequestURI,
+		}).Info("static request")
 		static.ServeHTTP(w, r)
 	})
 
 	mux.HandleFunc(fmt.Sprintf("/establish/%s", config.Token), func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%v: proxy request", r.RemoteAddr)
+		l := log.WithFields(log.Fields{
+			"remote_addr": r.RemoteAddr,
+		})
+
+		l.Info("proxy request")
 		hj, ok := w.(http.Hijacker)
 		if !ok {
-			log.Print("Connection doesn't support http.Hijacker")
+			l.Error("connection doesn't support http.Hijacker")
 			w.WriteHeader(500)
 			return
 		}
 
 		conn, br, err := hj.Hijack()
 		if err != nil {
-			log.Print("Error while hijacking connection:", err)
+			l.WithField("err", err).Error("error while hijacking connection")
 			w.WriteHeader(500)
 			return
 		}
@@ -57,8 +65,10 @@ func makeHTTPMux(config *Config) http.Handler {
 
 		hc := &hijackedConn{br: br, Conn: conn}
 		if err := RunMultiplexedServer(r.Context(), hc, d.DialContext); err != nil {
-			log.Printf("Connection handling ended with error: %v", err)
+			l.WithField("err", err).Error("connection handling ended with error")
 		}
+
+		l.Info("proxy request finished")
 	})
 
 	return CheckHost(config, mux)

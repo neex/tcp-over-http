@@ -2,10 +2,10 @@ package server
 
 import (
 	"crypto/tls"
-	"log"
 	"os"
 	"time"
 
+	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 )
 
@@ -35,7 +35,7 @@ func NewConfigFromFile(filename string) (*Config, error) {
 	}
 
 	if !cfg.IsHTTPS() {
-		log.Printf("Warning: serving without https")
+		log.Warn("serving without https")
 	} else {
 		cfg.Certificate, err = tls.LoadX509KeyPair(cfg.CertPath, cfg.KeyPath)
 		if err != nil {

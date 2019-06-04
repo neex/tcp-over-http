@@ -10,6 +10,8 @@ import (
 	"net"
 )
 
+const protocolMagic = "Elda"
+
 func ReadRequest(ctx context.Context, from net.Conn) (*ConnectionRequest, error) {
 	cr := &ConnectionRequest{}
 	if err := readPacket(ctx, from, cr); err != nil {
@@ -27,7 +29,7 @@ func ReadResponse(ctx context.Context, from net.Conn) (*ConnectionResponse, erro
 }
 
 func WritePacket(ctx context.Context, to net.Conn, val interface{}) error {
-	buf := bytes.NewBufferString("ELDA\x00\x00\x00\x00")
+	buf := bytes.NewBufferString(protocolMagic + "\x00\x00\x00\x00")
 	enc := gob.NewEncoder(buf)
 	if err := enc.Encode(val); err != nil {
 		return err
@@ -78,7 +80,7 @@ func readPacket(ctx context.Context, from net.Conn, val interface{}) error {
 		return checkContext(err)
 	}
 
-	if string(magic[:]) != "ELDA" {
+	if string(magic[:]) != protocolMagic {
 		return errors.New("magic mismatch")
 	}
 

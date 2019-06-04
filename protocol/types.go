@@ -1,8 +1,6 @@
 package protocol
 
-import (
-	"time"
-)
+import "time"
 
 type ConnectionRequest struct {
 	Network string

@@ -1,8 +1,9 @@
 package main
 
 import (
-	"log"
 	"os"
+
+	log "github.com/sirupsen/logrus"
 
 	"tcp-over-http/server"
 )
@@ -14,18 +15,18 @@ func main() {
 
 	config, err := server.NewConfigFromFile(os.Args[1])
 	if err != nil {
-		log.Fatalf("Loading config: %v", err)
+		log.WithField("err", err).Fatal("loading config")
 	}
 
 	if config.RedirectorAddr != "" {
 		go func() {
 			if err := server.RunRedirectorServer(config); err != nil {
-				log.Fatalf("Running redirector: %v", err)
+				log.WithField("err", err).Fatal("running redirector")
 			}
 		}()
 	}
 
 	if err := server.RunHTTPServer(config); err != nil {
-		log.Fatalf("Running server: %v", err)
+		log.WithField("err", err).Fatal("running server")
 	}
 }
