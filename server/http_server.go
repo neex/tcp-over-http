@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"crypto/tls"
 	"fmt"
 	"log"
@@ -16,19 +17,8 @@ func RunHTTPServer(config *Config) error {
 	}
 
 	if config.IsHTTPS() {
-		if config.Domain != "" {
-			srv.TLSConfig = &tls.Config{
-				GetCertificate: func(info *tls.ClientHelloInfo) (cert *tls.Certificate, err error) {
-					if info.ServerName == config.Domain {
-						return &config.Certificate, nil
-					}
-					return nil, nil
-				},
-			}
-		} else {
-			srv.TLSConfig = &tls.Config{
-				Certificates: []tls.Certificate{config.Certificate},
-			}
+		srv.TLSConfig = &tls.Config{
+			Certificates: []tls.Certificate{config.Certificate},
 		}
 
 		return srv.ListenAndServeTLS("", "")
@@ -49,9 +39,8 @@ func makeHTTPMux(config *Config) http.Handler {
 			w.WriteHeader(500)
 			return
 		}
-		w.WriteHeader(200)
 
-		conn, _, err := hj.Hijack()
+		conn, br, err := hj.Hijack()
 		if err != nil {
 			log.Print("Error while hijacking connection:", err)
 			w.WriteHeader(500)
@@ -61,10 +50,21 @@ func makeHTTPMux(config *Config) http.Handler {
 		d := net.Dialer{
 			Timeout: config.DialTimeout,
 		}
-		if err := RunMultiplexedServer(r.Context(), conn, d.DialContext); err != nil {
+
+		hc := &hijackedConn{br: br, Conn: conn}
+		if err := RunMultiplexedServer(r.Context(), hc, d.DialContext); err != nil {
 			log.Printf("Connection handling ended with error: %v", err)
 		}
 	})
 
 	return CheckHost(config, mux)
+}
+
+type hijackedConn struct {
+	br *bufio.ReadWriter
+	net.Conn
+}
+
+func (hc *hijackedConn) Read(b []byte) (int, error) {
+	return hc.br.Read(b)
 }

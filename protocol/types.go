@@ -11,5 +11,5 @@ type ConnectionRequest struct {
 }
 
 type ConnectionResponse struct {
-	Err error
+	Err *string
 }

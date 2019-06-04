@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/gob"
+	"errors"
 	"io"
 	"net"
 )
@@ -26,15 +27,15 @@ func ReadResponse(ctx context.Context, from net.Conn) (*ConnectionResponse, erro
 }
 
 func WritePacket(ctx context.Context, to net.Conn, val interface{}) error {
-	buf := bytes.NewBuffer([]byte{0, 0, 0, 0})
+	buf := bytes.NewBufferString("ELDA\x00\x00\x00\x00")
 	enc := gob.NewEncoder(buf)
 	if err := enc.Encode(val); err != nil {
 		return err
 	}
 
-	l := buf.Len() - 4
+	l := buf.Len() - 8
 	data := buf.Bytes()
-	binary.BigEndian.PutUint32(data[:4], uint32(l))
+	binary.BigEndian.PutUint32(data[4:8], uint32(l))
 
 	newCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -70,6 +71,15 @@ func readPacket(ctx context.Context, from net.Conn, val interface{}) error {
 			return ctx.Err()
 		}
 		return err
+	}
+
+	var magic [4]byte
+	if _, err := io.ReadFull(from, magic[:]); err != nil {
+		return checkContext(err)
+	}
+
+	if string(magic[:]) != "ELDA" {
+		return errors.New("magic mismatch")
 	}
 
 	var l [4]byte
