@@ -51,7 +51,7 @@ func (cw *connectionWrapper) ensureResponse() {
 	resp, err := protocol.ReadResponse(context.TODO(), cw.Conn)
 	if err != nil || resp.Err != nil {
 		if err == nil {
-			err = fmt.Errorf("remote reported: %v", err)
+			err = fmt.Errorf("remote reported: %v", *resp.Err)
 		} else {
 			err = fmt.Errorf("local reading response: %v", err)
 		}
@@ -59,11 +59,13 @@ func (cw *connectionWrapper) ensureResponse() {
 		if atomic.LoadUint32(&cw.disconnected) == 0 {
 			cw.logger.Printf("dial error: %v", err)
 		} else {
-			cw.logger.Printf("close called while reading initial response")
+			cw.logger.Print("close called while reading initial response")
 		}
 
 		_ = cw.Conn.Close()
 		_, _ = io.Copy(ioutil.Discard, cw.Conn)
 		return
 	}
+
+	cw.logger.Print("remote end connected")
 }

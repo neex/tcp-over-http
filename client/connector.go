@@ -2,7 +2,6 @@ package client
 
 import (
 	"crypto/tls"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -13,7 +12,7 @@ type Connector struct {
 	Config *Config
 }
 
-func (c *Connector) Connect() (*MultiplexedConnection, error) {
+func (c *Connector) Connect(logger *log.Logger) (*MultiplexedConnection, error) {
 	parsed, err := url.Parse(c.Config.Address)
 	if err != nil {
 		return nil, err
@@ -28,14 +27,17 @@ func (c *Connector) Connect() (*MultiplexedConnection, error) {
 	d := &net.Dialer{
 		Timeout: c.Config.ConnectTimeout,
 	}
+	logger.Print("connecting to upstream")
 	conn, err := tls.DialWithDialer(d, "tcp", host, &tls.Config{
 		NextProtos: []string{"http/1.1"},
+		ServerName: host,
 	})
 
 	if err != nil {
 		if conn != nil {
 			_ = conn.Close()
 		}
+		logger.Printf("error while connecting to upstream: %v", err)
 		return nil, err
 	}
 
@@ -47,12 +49,22 @@ func (c *Connector) Connect() (*MultiplexedConnection, error) {
 
 	if err := req.Write(conn); err != nil {
 		_ = conn.Close()
+		logger.Printf("error while writing initial http request: %v", err)
 		return nil, err
 	}
 
+	logger.Printf("lazy connect successful")
+
 	cw := &connectionWrapper{
 		Conn:   conn,
-		logger: log.New(ioutil.Discard, "", log.Flags()),
+		logger: logger,
 	}
-	return NewMultiplexedConnection(cw, c.Config.MaxConnectionMultiplex, c.Config.RemoteTimeout)
+
+	connCfg := &MultiplexedConnectionConfig{
+		MaxMultiplexedConnections: c.Config.MaxConnectionMultiplex,
+		RemoteDialTimeout:         c.Config.ConnectTimeout,
+		KeepAliveTimeout:          c.Config.KeepAliveTimeout,
+		Logger:                    logger,
+	}
+	return NewMultiplexedConnection(cw, connCfg)
 }

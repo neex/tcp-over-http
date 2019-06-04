@@ -11,6 +11,7 @@ type Config struct {
 	Address                string        `yaml:"address"`
 	RemoteTimeout          time.Duration `yaml:"remote_timeout"`
 	ConnectTimeout         time.Duration `yaml:"connect_timeout"`
+	KeepAliveTimeout       time.Duration `yaml:"keep_alive_timeout"`
 	MaxConnectionMultiplex int           `yaml:"max_connection_multiplex"`
 }
 

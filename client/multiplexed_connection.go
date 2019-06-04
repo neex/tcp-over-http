@@ -3,6 +3,8 @@ package client
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -15,39 +17,66 @@ import (
 var ErrLimitExceeded = errors.New("connection limit exceeded")
 
 type MultiplexedConnection struct {
-	m sync.Mutex
+	m      sync.Mutex
+	closed bool
 
-	cntConnected, cntMax, cntActive int
-
-	closed            bool
-	remoteDialTimeout time.Duration
+	cntActive, cntUsed int
+	config             *MultiplexedConnectionConfig
 
 	conn    net.Conn
 	session *yamux.Session
 }
 
-func NewMultiplexedConnection(conn net.Conn, max int, remoteDialTimeout time.Duration) (*MultiplexedConnection, error) {
-	session, err := yamux.Client(conn, nil)
+type MultiplexedConnectionConfig struct {
+	MaxMultiplexedConnections int
+	RemoteDialTimeout         time.Duration
+	KeepAliveTimeout          time.Duration
+	Logger                    *log.Logger
+}
+
+func NewMultiplexedConnection(conn net.Conn, config *MultiplexedConnectionConfig) (*MultiplexedConnection, error) {
+	yamuxConfig := *yamux.DefaultConfig()
+	yamuxConfig.LogOutput = nil
+	yamuxConfig.Logger = config.Logger
+	if config.KeepAliveTimeout != 0 {
+		yamuxConfig.KeepAliveInterval = config.KeepAliveTimeout
+		yamuxConfig.ConnectionWriteTimeout = config.KeepAliveTimeout
+	}
+
+	session, err := yamux.Client(conn, &yamuxConfig)
 	if err != nil {
+		config.Logger.Printf("yamux.Client() failed: %v", err)
 		return nil, err
 	}
 
 	mc := &MultiplexedConnection{
-		cntMax:            max,
-		remoteDialTimeout: remoteDialTimeout,
-		conn:              conn,
-		session:           session,
+		config:  config,
+		conn:    conn,
+		session: session,
 	}
+
 	return mc, nil
 }
 
 func (c *MultiplexedConnection) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
-	if !c.registerConnect() {
+	subConnID := c.registerConnect()
+	if subConnID == 0 {
 		return nil, ErrLimitExceeded
 	}
 
+	subConnIDStr := fmt.Sprintf("SubConn %v", subConnID)
+	max := c.config.MaxMultiplexedConnections
+	if max > 0 {
+		subConnIDStr = fmt.Sprintf("%s/%v", subConnIDStr, max)
+	}
+
+	logPrefix := fmt.Sprintf("%s%s (to %s://%s): ", c.config.Logger.Prefix(), subConnIDStr, network, address)
+	logger := log.New(c.config.Logger.Writer(), logPrefix, 0)
+
+	logger.Print("connecting")
 	conn, err := c.session.Open()
 	if err != nil {
+		logger.Printf("error in session.Open: %v", err)
 		c.registerDisconnect()
 		return nil, err
 	}
@@ -55,15 +84,22 @@ func (c *MultiplexedConnection) DialContext(ctx context.Context, network, addres
 	req := protocol.ConnectionRequest{
 		Network: network,
 		Address: address,
-		Timeout: c.remoteDialTimeout,
+		Timeout: c.config.RemoteDialTimeout,
 	}
 
 	if err := protocol.WritePacket(ctx, conn, &req); err != nil {
+		logger.Printf("error while writing connection request: %v", err)
 		c.registerDisconnect()
 		return nil, err
 	}
 
-	return &connectionWrapper{Conn: conn, onDisconnect: c.registerDisconnect}, nil
+	logger.Print("lazy connect successful")
+
+	return &connectionWrapper{
+		Conn:         conn,
+		onDisconnect: c.registerDisconnect,
+		logger:       logger,
+	}, nil
 }
 
 func (c *MultiplexedConnection) Close() {
@@ -72,25 +108,27 @@ func (c *MultiplexedConnection) Close() {
 
 	c.closed = true
 	if c.cntActive == 0 {
+		c.config.Logger.Print("no active connections when .Close called, closing session")
 		_ = c.session.Close()
 	}
 }
 
-func (c *MultiplexedConnection) registerConnect() bool {
+func (c *MultiplexedConnection) registerConnect() int {
 	c.m.Lock()
 	defer c.m.Unlock()
 
 	if c.closed {
-		return false
+		return 0
 	}
 
-	if c.cntMax > 0 && c.cntConnected >= c.cntMax {
-		return false
+	max := c.config.MaxMultiplexedConnections
+	if max > 0 && c.cntUsed >= max {
+		return 0
 	}
 
-	c.cntConnected++
+	c.cntUsed++
 	c.cntActive++
-	return true
+	return c.cntUsed
 }
 
 func (c *MultiplexedConnection) registerDisconnect() {
@@ -99,6 +137,7 @@ func (c *MultiplexedConnection) registerDisconnect() {
 
 	c.cntActive--
 	if c.cntActive == 0 && c.closed {
+		c.config.Logger.Print("no active connections left, closing session")
 		_ = c.session.Close()
 	}
 }

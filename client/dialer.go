@@ -22,26 +22,8 @@ type Dialer struct {
 	Verbose   bool
 
 	m        sync.Mutex
-	connPool []*connWithId
-	lastId   uint64
-}
-
-type connWithId struct {
-	id     uint64
-	mc     *MultiplexedConnection
-	logger *log.Logger
-}
-
-func newConnWithId(id uint64, verbose bool) *connWithId {
-	wr := ioutil.Discard
-	if verbose {
-		wr = os.Stderr
-	}
-
-	return &connWithId{
-		id:     id,
-		logger: log.New(wr, fmt.Sprintf("Connection %v: ", id), 0),
-	}
+	connPool []*MultiplexedConnection
+	lastID   uint64
 }
 
 func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
@@ -51,42 +33,29 @@ func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.
 		}
 	}
 
-	connId := atomic.AddUint64(&d.lastId, 1)
-	cwi := newConnWithId(connId, d.Verbose)
-	cwi.logger.Print("connecting to upstream")
-
-	mc, err := d.Connector.Connect()
+	connID := atomic.AddUint64(&d.lastID, 1)
+	conn, err := d.Connector.Connect(d.makeLogger(connID))
 
 	if err != nil {
-		cwi.logger.Printf("error while connecting to upstream: %v", err)
 		return nil, err
 	}
-	cwi.mc = mc
-	mc.conn.(*connectionWrapper).logger = cwi.logger
-	return d.dialVia(ctx, cwi, network, address)
+
+	return d.dialVia(ctx, conn, network, address)
 }
 
-func (d *Dialer) dialVia(ctx context.Context, c *connWithId, network, address string) (net.Conn, error) {
-	logger := log.New(c.logger.Writer(),
-		fmt.Sprintf("%sproxy to %s://%s: ", c.logger.Prefix(), network, address),
-		0)
-
-	logger.Print("dialing")
-	conn, err := c.mc.DialContext(ctx, network, address)
+func (d *Dialer) dialVia(ctx context.Context, c *MultiplexedConnection, network, address string) (net.Conn, error) {
+	conn, err := c.DialContext(ctx, network, address)
 	if err != nil {
-		logger.Printf("error while dialing: %v", err)
-		c.mc.Close()
+		c.Close()
 		return nil, err
 	}
 
-	logger.Print("connected")
 	d.putToPool(c)
 
-	conn.(*connectionWrapper).logger = logger
 	return conn, err
 }
 
-func (d *Dialer) takeFromPool() *connWithId {
+func (d *Dialer) takeFromPool() *MultiplexedConnection {
 	d.m.Lock()
 	defer d.m.Unlock()
 
@@ -102,9 +71,18 @@ func (d *Dialer) takeFromPool() *connWithId {
 	return c
 }
 
-func (d *Dialer) putToPool(c *connWithId) {
+func (d *Dialer) putToPool(c *MultiplexedConnection) {
 	d.m.Lock()
 	defer d.m.Unlock()
 
 	d.connPool = append(d.connPool, c)
+}
+
+func (d *Dialer) makeLogger(connID uint64) *log.Logger {
+	wr := ioutil.Discard
+	if d.Verbose {
+		wr = os.Stderr
+	}
+
+	return log.New(wr, fmt.Sprintf("Conn ID=%v: ", connID), 0)
 }
