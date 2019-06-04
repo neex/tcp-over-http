@@ -39,7 +39,7 @@ func (p *Socks5Server) ListenAndServe(ctx context.Context, addr string) error {
 		go func() {
 			err := p.handleConn(newCtx, conn)
 			if err != nil {
-				log.Printf("Conn handling ended with error: %v", err)
+				log.Printf("Socks5 server: conn handling ended with error: %v", err)
 			}
 		}()
 	}

@@ -2,9 +2,12 @@ package client
 
 import (
 	"context"
+	"fmt"
+	"io/ioutil"
 	"log"
 	"math/rand"
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,53 +18,71 @@ func init() {
 }
 
 type Dialer struct {
-	c *Connector
+	Connector *Connector
+	Verbose   bool
 
 	m        sync.Mutex
 	connPool []*connWithId
 	lastId   uint64
 }
 
-func NewDialer(c *Connector) *Dialer {
-	return &Dialer{c: c}
+type connWithId struct {
+	id     uint64
+	mc     *MultiplexedConnection
+	logger *log.Logger
 }
 
-type connWithId struct {
-	id uint64
-	mc *MultiplexedConnection
+func newConnWithId(id uint64, verbose bool) *connWithId {
+	wr := ioutil.Discard
+	if verbose {
+		wr = os.Stderr
+	}
+
+	return &connWithId{
+		id:     id,
+		logger: log.New(wr, fmt.Sprintf("Connection %v: ", id), 0),
+	}
 }
 
 func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
-	c := d.takeFromPool()
-	if c != nil {
+	for c := d.takeFromPool(); c != nil; c = d.takeFromPool() {
 		if conn, err := d.dialVia(ctx, c, network, address); err == nil {
 			return conn, err
 		}
 	}
 
 	connId := atomic.AddUint64(&d.lastId, 1)
-	log.Printf("Connection %v: connecting to upstream", connId)
-	mc, err := d.c.Connect()
+	cwi := newConnWithId(connId, d.Verbose)
+	cwi.logger.Print("connecting to upstream")
+
+	mc, err := d.Connector.Connect()
+
 	if err != nil {
-		log.Printf("Connection %v: error while connecting to upstream: %v", connId, err)
+		cwi.logger.Printf("error while connecting to upstream: %v", err)
 		return nil, err
 	}
-
-	log.Printf("Connection %v: connected to upstream", connId)
-	return d.dialVia(ctx, &connWithId{id: connId, mc: mc}, network, address)
+	cwi.mc = mc
+	mc.conn.(*connectionWrapper).logger = cwi.logger
+	return d.dialVia(ctx, cwi, network, address)
 }
 
 func (d *Dialer) dialVia(ctx context.Context, c *connWithId, network, address string) (net.Conn, error) {
-	log.Printf("Connection %v: dialing to %s://%s", c.id, network, address)
+	logger := log.New(c.logger.Writer(),
+		fmt.Sprintf("%sproxy to %s://%s: ", c.logger.Prefix(), network, address),
+		0)
+
+	logger.Print("dialing")
 	conn, err := c.mc.DialContext(ctx, network, address)
 	if err != nil {
-		log.Printf("Connection %v: error while dialing to %s://%s: %v", c.id, network, address, err)
+		logger.Printf("error while dialing: %v", err)
 		c.mc.Close()
-	} else {
-		log.Printf("Connection %v: connected to %s://%s", c.id, network, address)
-		d.putToPool(c)
+		return nil, err
 	}
 
+	logger.Print("connected")
+	d.putToPool(c)
+
+	conn.(*connectionWrapper).logger = logger
 	return conn, err
 }
 

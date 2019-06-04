@@ -2,6 +2,7 @@ package client
 
 import (
 	"crypto/tls"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -50,10 +51,8 @@ func (c *Connector) Connect() (*MultiplexedConnection, error) {
 	}
 
 	cw := &connectionWrapper{
-		onDisconnect: func() {
-			log.Printf("Upstream connection disconnected")
-		},
-		Conn: conn,
+		Conn:   conn,
+		logger: log.New(ioutil.Discard, "", log.Flags()),
 	}
 	return NewMultiplexedConnection(cw, c.Config.MaxConnectionMultiplex, c.Config.RemoteTimeout)
 }

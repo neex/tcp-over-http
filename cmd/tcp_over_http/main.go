@@ -21,6 +21,8 @@ func main() {
 		Short: "Dial to addr and connect to stdin/stdout",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
+			dialer.Verbose = false
+
 			addr := args[0]
 
 			conn, err := dialer.DialContext(context.Background(), "tcp", addr)
@@ -68,7 +70,7 @@ func main() {
 		Short: "Run socks5 server on local addr",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			localAddr := args[1]
+			localAddr := args[0]
 			server := &socks5_server.Socks5Server{
 				Dialer: dialer.DialContext,
 			}
@@ -89,7 +91,7 @@ func main() {
 			return err
 		}
 		connector := &client.Connector{Config: config}
-		dialer = client.NewDialer(connector)
+		dialer = &client.Dialer{Connector: connector, Verbose: true}
 		return nil
 	}
 

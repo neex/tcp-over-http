@@ -2,12 +2,13 @@ package client
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"net"
 	"sync"
+	"sync/atomic"
 
 	"tcp-over-http/protocol"
 )
@@ -15,7 +16,10 @@ import (
 type connectionWrapper struct {
 	m            sync.Mutex
 	responseDone bool
+	disconnected uint32
 	onDisconnect func()
+	logger       *log.Logger
+
 	net.Conn
 }
 
@@ -25,7 +29,14 @@ func (cw *connectionWrapper) Read(b []byte) (n int, err error) {
 }
 
 func (cw *connectionWrapper) Close() error {
-	defer cw.onDisconnect()
+	if atomic.SwapUint32(&cw.disconnected, 1) == 0 {
+		cw.logger.Print("disconnected")
+
+		if cw.onDisconnect != nil {
+			defer cw.onDisconnect()
+		}
+	}
+
 	return cw.Conn.Close()
 }
 
@@ -40,9 +51,17 @@ func (cw *connectionWrapper) ensureResponse() {
 	resp, err := protocol.ReadResponse(context.TODO(), cw.Conn)
 	if err != nil || resp.Err != nil {
 		if err == nil {
-			err = errors.New(*resp.Err)
+			err = fmt.Errorf("remote reported: %v", err)
+		} else {
+			err = fmt.Errorf("local reading response: %v", err)
 		}
-		log.Printf("Dial error: %v", err)
+
+		if atomic.LoadUint32(&cw.disconnected) == 0 {
+			cw.logger.Printf("dial error: %v", err)
+		} else {
+			cw.logger.Printf("close called while reading initial response")
+		}
+
 		_ = cw.Conn.Close()
 		_, _ = io.Copy(ioutil.Discard, cw.Conn)
 		return
