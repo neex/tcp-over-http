@@ -7,10 +7,11 @@ import (
 	"net"
 	"os"
 	"sync"
-	"tcp-over-http/client"
-	socks5_server "tcp-over-http/client/socks5-server"
 
 	"github.com/spf13/cobra"
+
+	"tcp-over-http/client"
+	socks5_server "tcp-over-http/client/socks5-server"
 )
 
 func main() {
