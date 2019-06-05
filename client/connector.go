@@ -2,17 +2,18 @@ package client
 
 import (
 	"crypto/tls"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type Connector struct {
 	Config *Config
 }
 
-func (c *Connector) Connect(logger *log.Logger) (*MultiplexedConnection, error) {
+func (c *Connector) Connect(logger *log.Entry) (*MultiplexedConnection, error) {
 	parsed, err := url.Parse(c.Config.Address)
 	if err != nil {
 		return nil, err
@@ -27,17 +28,16 @@ func (c *Connector) Connect(logger *log.Logger) (*MultiplexedConnection, error) 
 	d := &net.Dialer{
 		Timeout: c.Config.ConnectTimeout,
 	}
-	logger.Print("connecting to upstream")
+	logger.Info("connecting to upstream")
 	conn, err := tls.DialWithDialer(d, "tcp", host, &tls.Config{
 		NextProtos: []string{"http/1.1"},
-		ServerName: host,
 	})
 
 	if err != nil {
 		if conn != nil {
 			_ = conn.Close()
 		}
-		logger.Printf("error while connecting to upstream: %v", err)
+		logger.WithError(err).Error("while connecting to upstream")
 		return nil, err
 	}
 
@@ -49,11 +49,11 @@ func (c *Connector) Connect(logger *log.Logger) (*MultiplexedConnection, error) 
 
 	if err := req.Write(conn); err != nil {
 		_ = conn.Close()
-		logger.Printf("error while writing initial http request: %v", err)
+		logger.WithError(err).Error("error while writing initial http request")
 		return nil, err
 	}
 
-	logger.Printf("lazy connect successful")
+	logger.Debug("lazy upstream connect successful")
 
 	cw := &connectionWrapper{
 		Conn:   conn,
@@ -66,5 +66,6 @@ func (c *Connector) Connect(logger *log.Logger) (*MultiplexedConnection, error) 
 		KeepAliveTimeout:          c.Config.KeepAliveTimeout,
 		Logger:                    logger,
 	}
+
 	return NewMultiplexedConnection(cw, connCfg)
 }

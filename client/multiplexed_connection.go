@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/hashicorp/yamux"
+	log "github.com/sirupsen/logrus"
 
 	"tcp-over-http/protocol"
 )
@@ -31,13 +31,12 @@ type MultiplexedConnectionConfig struct {
 	MaxMultiplexedConnections int
 	RemoteDialTimeout         time.Duration
 	KeepAliveTimeout          time.Duration
-	Logger                    *log.Logger
+	Logger                    *log.Entry
 }
 
 func NewMultiplexedConnection(conn net.Conn, config *MultiplexedConnectionConfig) (*MultiplexedConnection, error) {
 	yamuxConfig := *yamux.DefaultConfig()
-	yamuxConfig.LogOutput = nil
-	yamuxConfig.Logger = config.Logger
+	yamuxConfig.LogOutput = config.Logger.WriterLevel(log.ErrorLevel)
 	if config.KeepAliveTimeout != 0 {
 		yamuxConfig.KeepAliveInterval = config.KeepAliveTimeout
 		yamuxConfig.ConnectionWriteTimeout = config.KeepAliveTimeout
@@ -45,7 +44,7 @@ func NewMultiplexedConnection(conn net.Conn, config *MultiplexedConnectionConfig
 
 	session, err := yamux.Client(conn, &yamuxConfig)
 	if err != nil {
-		config.Logger.Printf("yamux.Client() failed: %v", err)
+		config.Logger.WithError(err).Fatal("yamux.Client() failed")
 		return nil, err
 	}
 
@@ -64,19 +63,21 @@ func (c *MultiplexedConnection) DialContext(ctx context.Context, network, addres
 		return nil, ErrLimitExceeded
 	}
 
-	subConnIDStr := fmt.Sprintf("SubConn %v", subConnID)
+	subConnIDStr := fmt.Sprintf("%v", subConnID)
 	max := c.config.MaxMultiplexedConnections
 	if max > 0 {
 		subConnIDStr = fmt.Sprintf("%s/%v", subConnIDStr, max)
 	}
 
-	logPrefix := fmt.Sprintf("%s%s (to %s://%s): ", c.config.Logger.Prefix(), subConnIDStr, network, address)
-	logger := log.New(c.config.Logger.Writer(), logPrefix, 0)
+	logger := c.config.Logger.WithFields(log.Fields{
+		"subconn": subConnIDStr,
+		"remote":  fmt.Sprintf("%s", address),
+	})
 
-	logger.Print("connecting")
+	logger.Info("connecting")
 	conn, err := c.session.Open()
 	if err != nil {
-		logger.Printf("error in session.Open: %v", err)
+		logger.WithError(err).Error("error in session.Open")
 		c.registerDisconnect()
 		return nil, err
 	}
@@ -88,12 +89,12 @@ func (c *MultiplexedConnection) DialContext(ctx context.Context, network, addres
 	}
 
 	if err := protocol.WritePacket(ctx, conn, &req); err != nil {
-		logger.Printf("error while writing connection request: %v", err)
+		logger.WithError(err).Error("error while writing connection request")
 		c.registerDisconnect()
 		return nil, err
 	}
 
-	logger.Print("lazy connect successful")
+	logger.Debug("lazy connect successful")
 
 	return &connectionWrapper{
 		Conn:         conn,
@@ -108,7 +109,7 @@ func (c *MultiplexedConnection) Close() {
 
 	c.closed = true
 	if c.cntActive == 0 {
-		c.config.Logger.Print("no active connections when .Close called, closing session")
+		c.config.Logger.Debug("no active connections when .Close called, closing session")
 		_ = c.session.Close()
 	}
 }
@@ -137,7 +138,7 @@ func (c *MultiplexedConnection) registerDisconnect() {
 
 	c.cntActive--
 	if c.cntActive == 0 && c.closed {
-		c.config.Logger.Print("no active connections left, closing session")
+		c.config.Logger.Debug("no active connections left, closing session")
 		_ = c.session.Close()
 	}
 }

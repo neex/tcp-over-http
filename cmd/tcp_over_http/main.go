@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"io"
-	"log"
 	"net"
 	"os"
 	"sync"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
 	"tcp-over-http/client"
@@ -15,14 +15,19 @@ import (
 )
 
 func main() {
-	var dialer *client.Dialer
+	var (
+		dialer   *client.Dialer
+		logLevel string
+	)
 
 	cmdDial := &cobra.Command{
 		Use:   "dial [addr to dial]",
 		Short: "Dial to addr and connect to stdin/stdout",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			dialer.Verbose = false
+			if logLevel == "" {
+				log.SetLevel(log.ErrorLevel)
+			}
 
 			addr := args[0]
 
@@ -57,7 +62,8 @@ func main() {
 				go func(c net.Conn) {
 					conn, err := dialer.DialContext(context.Background(), "tcp", remoteAddr)
 					if err != nil {
-						log.Print(err)
+						log.WithError(err).Error("dial failed early")
+						return
 					}
 
 					forward(conn, c, c)
@@ -86,13 +92,22 @@ func main() {
 	rootCmd := &cobra.Command{Use: "tcp_over_http"}
 	rootCmd.AddCommand(cmdDial, cmdForward, cmdSocks5)
 	rootCmd.PersistentFlags().StringVarP(&configFilename, "config", "c", "./config.yaml", "path to config")
+	rootCmd.PersistentFlags().StringVar(&logLevel, "loglevel", "", "loglevel")
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if logLevel != "" {
+			level, err := log.ParseLevel(logLevel)
+			if err != nil {
+				return err
+			}
+
+			log.SetLevel(level)
+		}
 		config, err := client.NewConfigFromFile(configFilename)
 		if err != nil {
 			return err
 		}
 		connector := &client.Connector{Config: config}
-		dialer = &client.Dialer{Connector: connector, Verbose: true}
+		dialer = &client.Dialer{Connector: connector}
 		return nil
 	}
 

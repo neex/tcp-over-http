@@ -2,15 +2,13 @@ package client
 
 import (
 	"context"
-	"fmt"
-	"io/ioutil"
-	"log"
 	"math/rand"
 	"net"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 func init() {
@@ -19,7 +17,6 @@ func init() {
 
 type Dialer struct {
 	Connector *Connector
-	Verbose   bool
 
 	m        sync.Mutex
 	connPool []*MultiplexedConnection
@@ -34,7 +31,7 @@ func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.
 	}
 
 	connID := atomic.AddUint64(&d.lastID, 1)
-	conn, err := d.Connector.Connect(d.makeLogger(connID))
+	conn, err := d.Connector.Connect(log.WithField("upstream_conn", connID))
 
 	if err != nil {
 		return nil, err
@@ -76,13 +73,4 @@ func (d *Dialer) putToPool(c *MultiplexedConnection) {
 	defer d.m.Unlock()
 
 	d.connPool = append(d.connPool, c)
-}
-
-func (d *Dialer) makeLogger(connID uint64) *log.Logger {
-	wr := ioutil.Discard
-	if d.Verbose {
-		wr = os.Stderr
-	}
-
-	return log.New(wr, fmt.Sprintf("Conn ID=%v: ", connID), 0)
 }

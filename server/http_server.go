@@ -54,7 +54,7 @@ func makeHTTPMux(config *Config) http.Handler {
 
 		conn, br, err := hj.Hijack()
 		if err != nil {
-			l.WithField("err", err).Error("error while hijacking connection")
+			l.WithError(err).Error("error while hijacking connection")
 			w.WriteHeader(500)
 			return
 		}
@@ -65,7 +65,7 @@ func makeHTTPMux(config *Config) http.Handler {
 
 		hc := &hijackedConn{br: br, Conn: conn}
 		if err := RunMultiplexedServer(r.Context(), hc, d.DialContext); err != nil {
-			l.WithField("err", err).Error("connection handling ended with error")
+			l.WithError(err).Error("connection handling ended with error")
 		}
 
 		l.Info("proxy request finished")

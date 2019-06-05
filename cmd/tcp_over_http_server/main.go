@@ -15,18 +15,18 @@ func main() {
 
 	config, err := server.NewConfigFromFile(os.Args[1])
 	if err != nil {
-		log.WithField("err", err).Fatal("loading config")
+		log.WithError(err).Fatal("loading config")
 	}
 
 	if config.RedirectorAddr != "" {
 		go func() {
 			if err := server.RunRedirectorServer(config); err != nil {
-				log.WithField("err", err).Fatal("running redirector")
+				log.WithError(err).Fatal("running redirector")
 			}
 		}()
 	}
 
 	if err := server.RunHTTPServer(config); err != nil {
-		log.WithField("err", err).Fatal("running server")
+		log.WithError(err).Fatal("running server")
 	}
 }

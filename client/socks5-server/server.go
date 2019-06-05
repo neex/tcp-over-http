@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"strconv"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type Socks5Server struct {
@@ -37,9 +38,12 @@ func (p *Socks5Server) ListenAndServe(ctx context.Context, addr string) error {
 		}
 
 		go func() {
+			l := log.WithField("remote_addr", conn.RemoteAddr())
 			err := p.handleConn(newCtx, conn)
 			if err != nil {
-				log.Printf("Socks5 server: conn handling ended with error: %v", err)
+				l.WithError(err).Warn("socks5 client handle error")
+			} else {
+				l.Debug("socks5 client handling finished")
 			}
 		}()
 	}

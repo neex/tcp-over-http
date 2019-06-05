@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"sync"
 	"sync/atomic"
+
+	log "github.com/sirupsen/logrus"
 
 	"tcp-over-http/protocol"
 )
@@ -18,7 +19,7 @@ type connectionWrapper struct {
 	responseDone bool
 	disconnected uint32
 	onDisconnect func()
-	logger       *log.Logger
+	logger       *log.Entry
 
 	net.Conn
 }
@@ -30,7 +31,7 @@ func (cw *connectionWrapper) Read(b []byte) (n int, err error) {
 
 func (cw *connectionWrapper) Close() error {
 	if atomic.SwapUint32(&cw.disconnected, 1) == 0 {
-		cw.logger.Print("disconnected")
+		cw.logger.Info("disconnected")
 
 		if cw.onDisconnect != nil {
 			defer cw.onDisconnect()
@@ -51,15 +52,15 @@ func (cw *connectionWrapper) ensureResponse() {
 	resp, err := protocol.ReadResponse(context.TODO(), cw.Conn)
 	if err != nil || resp.Err != nil {
 		if err == nil {
-			err = fmt.Errorf("remote reported: %v", *resp.Err)
+			err = fmt.Errorf("remote: %v", *resp.Err)
 		} else {
-			err = fmt.Errorf("local reading response: %v", err)
+			err = fmt.Errorf("local: %v", err)
 		}
 
 		if atomic.LoadUint32(&cw.disconnected) == 0 {
-			cw.logger.Printf("dial error: %v", err)
+			cw.logger.WithError(err).Error("dial error")
 		} else {
-			cw.logger.Print("close called while reading initial response")
+			cw.logger.Warn("close called while reading initial response")
 		}
 
 		_ = cw.Conn.Close()
@@ -67,5 +68,5 @@ func (cw *connectionWrapper) ensureResponse() {
 		return
 	}
 
-	cw.logger.Print("remote end connected")
+	cw.logger.Debug("remote end connected")
 }
