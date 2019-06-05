@@ -29,16 +29,26 @@ func (c *Connector) Connect(logger *log.Entry) (*MultiplexedConnection, error) {
 		Timeout: c.Config.ConnectTimeout,
 	}
 	logger.Info("connecting to upstream")
-	conn, err := tls.DialWithDialer(d, "tcp", host, &tls.Config{
-		NextProtos: []string{"http/1.1"},
-	})
-
+	conn, err := d.Dial("tcp", host)
 	if err != nil {
-		if conn != nil {
-			_ = conn.Close()
-		}
 		logger.WithError(err).Error("while connecting to upstream")
 		return nil, err
+	}
+
+	if TraceNetOps {
+		conn = &connectionWrapper{
+			onDisconnect: nil,
+			responseDone: true,
+			logger:       logger.WithField("underlying_conn", true),
+			Conn:         conn,
+		}
+	}
+
+	if parsed.Scheme == "https" {
+		conn = tls.Client(conn, &tls.Config{
+			NextProtos: []string{"http/1.1"},
+			ServerName: parsed.Host,
+		})
 	}
 
 	req, err := http.NewRequest("GET", c.Config.Address, nil)

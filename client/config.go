@@ -7,6 +7,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+var TraceNetOps = false
+
 type Config struct {
 	Address                string        `yaml:"address"`
 	RemoteTimeout          time.Duration `yaml:"remote_timeout"`

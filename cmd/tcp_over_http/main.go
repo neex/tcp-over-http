@@ -18,6 +18,7 @@ func main() {
 	var (
 		dialer   *client.Dialer
 		logLevel string
+		poolSize int
 	)
 
 	cmdDial := &cobra.Command{
@@ -48,7 +49,7 @@ func main() {
 			localAddr := args[0]
 			remoteAddr := args[1]
 
-			dialer.PreconnectPoolSize = 2
+			dialer.PreconnectPoolSize = poolSize
 			dialer.EnablePreconnect()
 
 			lsn, err := net.Listen("tcp", localAddr)
@@ -76,6 +77,7 @@ func main() {
 			}
 		},
 	}
+	cmdForward.PersistentFlags().IntVar(&poolSize, "preconnect-pool", 5, "preconnect pool size")
 
 	cmdSocks5 := &cobra.Command{
 		Use:   "socks5 [local addr]",
@@ -84,7 +86,7 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			localAddr := args[0]
 
-			dialer.PreconnectPoolSize = 5
+			dialer.PreconnectPoolSize = poolSize
 			dialer.EnablePreconnect()
 
 			server := &socks5_server.Socks5Server{
@@ -96,7 +98,7 @@ func main() {
 			}
 		},
 	}
-
+	cmdSocks5.PersistentFlags().IntVar(&poolSize, "preconnect-pool", 5, "preconnect pool size")
 	var configFilename string
 	rootCmd := &cobra.Command{Use: "tcp_over_http"}
 	rootCmd.AddCommand(cmdDial, cmdForward, cmdSocks5)
@@ -104,6 +106,10 @@ func main() {
 	rootCmd.PersistentFlags().StringVar(&logLevel, "loglevel", "", "loglevel")
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		if logLevel != "" {
+			if logLevel == "trace_netop" {
+				client.TraceNetOps = true
+				logLevel = "trace"
+			}
 			level, err := log.ParseLevel(logLevel)
 			if err != nil {
 				return err
