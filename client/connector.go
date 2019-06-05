@@ -57,6 +57,7 @@ func (c *Connector) Connect(logger *log.Entry) (*MultiplexedConnection, error) {
 		return nil, err
 	}
 
+	req.Header.Set("user-agent", "")
 	if err := req.Write(conn); err != nil {
 		_ = conn.Close()
 		logger.WithError(err).Error("error while writing initial http request")
