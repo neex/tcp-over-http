@@ -46,23 +46,24 @@ func (d *Dialer) Closed() bool {
 }
 
 func (d *Dialer) EnablePreconnect() {
-	go d.preconnectOnce.Do(func() {
-		if d.PreconnectPoolSize == 0 {
-			return
-		}
-		d.prevPoolSize = d.PreconnectPoolSize
-
-		for {
-			if d.Closed() {
-				d.Close()
+	d.preconnectOnce.Do(func() {
+		go func() {
+			if d.PreconnectPoolSize == 0 {
 				return
 			}
+			d.prevPoolSize = d.PreconnectPoolSize
 
-			if !d.refillPreconnectPool() {
-				time.Sleep(time.Second)
+			for {
+				if d.Closed() {
+					d.Close()
+					return
+				}
+
+				if !d.refillPreconnectPool() {
+					time.Sleep(time.Second)
+				}
 			}
-		}
-
+		}()
 	})
 }
 
