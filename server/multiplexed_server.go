@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/hashicorp/yamux"
+	log "github.com/sirupsen/logrus"
 
 	"tcp-over-http/protocol"
 )
@@ -26,7 +27,9 @@ func RunMultiplexedServer(ctx context.Context, conn net.Conn, dial DialContextFu
 		return fmt.Errorf("error while writing initial response: %v", err)
 	}
 
-	sess, err := yamux.Server(conn, nil)
+	conf := *yamux.DefaultConfig()
+	conf.LogOutput = log.StandardLogger().WriterLevel(log.ErrorLevel)
+	sess, err := yamux.Server(conn, &conf)
 	if err != nil {
 		return fmt.Errorf("error while creating server: %v", err)
 	}
