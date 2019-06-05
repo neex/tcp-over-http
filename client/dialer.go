@@ -89,7 +89,7 @@ func (d *Dialer) dialVia(ctx context.Context, c *MultiplexedConnection, network,
 		return nil, err
 	}
 
-	if c.Accepting() {
+	if c.IsDialable() {
 		d.putToPool(c)
 	}
 
@@ -98,7 +98,14 @@ func (d *Dialer) dialVia(ctx context.Context, c *MultiplexedConnection, network,
 
 func (d *Dialer) refillPreconnectPool() bool {
 	d.m.Lock()
-	cnt := len(d.connPool)
+	cnt := 0
+	for i := range d.connPool {
+		if d.connPool[i].IsDialable() {
+			d.connPool[cnt] = d.connPool[i]
+			cnt++
+		}
+	}
+	d.connPool = d.connPool[:cnt]
 	d.m.Unlock()
 
 	max := cnt
@@ -134,16 +141,21 @@ func (d *Dialer) takeFromPool() *MultiplexedConnection {
 	d.m.Lock()
 	defer d.m.Unlock()
 
-	n := len(d.connPool)
-	if n == 0 {
-		return nil
-	}
+	for {
+		n := len(d.connPool)
+		if n == 0 {
+			return nil
+		}
 
-	r := rand.Intn(n)
-	c := d.connPool[r]
-	d.connPool[r] = d.connPool[n-1]
-	d.connPool = d.connPool[:n-1]
-	return c
+		r := rand.Intn(n)
+		c := d.connPool[r]
+		d.connPool[r] = d.connPool[n-1]
+		d.connPool = d.connPool[:n-1]
+
+		if c.IsDialable() {
+			return c
+		}
+	}
 }
 
 func (d *Dialer) putToPool(c *MultiplexedConnection) {

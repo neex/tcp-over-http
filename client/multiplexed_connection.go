@@ -21,7 +21,7 @@ type MultiplexedConnection struct {
 	session *yamux.Session
 
 	m                  sync.Mutex
-	accepting, closed  bool
+	dialable, closed   bool
 	cntActive, cntUsed int
 }
 
@@ -47,9 +47,9 @@ func NewMultiplexedConnection(conn net.Conn, config *MultiplexedConnectionConfig
 	}
 
 	mc := &MultiplexedConnection{
-		config:    config,
-		session:   session,
-		accepting: true,
+		config:   config,
+		session:  session,
+		dialable: true,
 	}
 
 	return mc, nil
@@ -104,19 +104,31 @@ func (c *MultiplexedConnection) DialContext(ctx context.Context, network, addres
 func (c *MultiplexedConnection) Close() {
 	c.m.Lock()
 	defer c.m.Unlock()
-	c.accepting = false
+	c.dialable = false
 	c.checkClose()
 }
 
-func (c *MultiplexedConnection) Accepting() bool {
-	return c.accepting
+func (c *MultiplexedConnection) IsDialable() bool {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	if c.session.IsClosed() {
+		c.dialable = false
+		c.checkClose()
+	}
+
+	if !c.dialable {
+		return false
+	}
+
+	return true
 }
 
 func (c *MultiplexedConnection) registerConnect() int {
 	c.m.Lock()
 	defer c.m.Unlock()
 
-	if !c.accepting {
+	if !c.dialable {
 		return 0
 	}
 
@@ -125,7 +137,7 @@ func (c *MultiplexedConnection) registerConnect() int {
 	c.cntUsed++
 	c.cntActive++
 	if max > 0 && c.cntUsed >= max {
-		c.accepting = false
+		c.dialable = false
 	}
 	return c.cntUsed
 }
@@ -138,7 +150,7 @@ func (c *MultiplexedConnection) registerDisconnect() {
 }
 
 func (c *MultiplexedConnection) checkClose() {
-	needClose := c.cntActive == 0 && !c.accepting && !c.closed
+	needClose := c.cntActive == 0 && !c.dialable && !c.closed
 	if needClose {
 		go func() {
 			c.config.Logger.Debug("closing session")
