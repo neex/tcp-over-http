@@ -47,7 +47,7 @@ func (cw *connectionWrapper) ensureResponse() {
 	if cw.responseDone {
 		return
 	}
-	defer func() { cw.responseDone = true }()
+	cw.responseDone = true
 
 	resp, err := protocol.ReadResponse(context.TODO(), cw.Conn)
 	if err != nil || resp.Err != nil {

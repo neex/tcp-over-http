@@ -16,28 +16,70 @@ func init() {
 }
 
 type Dialer struct {
-	Connector *Connector
+	Connector          *Connector
+	PreconnectPoolSize int
 
 	m        sync.Mutex
+	closed   bool
 	connPool []*MultiplexedConnection
-	lastID   uint64
+
+	lastID uint64
+
+	preconnectOnce sync.Once
+	prevPoolSize   int
+}
+
+func (d *Dialer) Close() {
+	d.m.Lock()
+	defer d.m.Unlock()
+	for _, mc := range d.connPool {
+		mc.Close()
+	}
+	d.closed = true
+}
+
+func (d *Dialer) Closed() bool {
+	d.m.Lock()
+	defer d.m.Unlock()
+
+	return d.closed
+}
+
+func (d *Dialer) EnablePreconnect() {
+	go d.preconnectOnce.Do(func() {
+		if d.PreconnectPoolSize == 0 {
+			return
+		}
+		d.prevPoolSize = d.PreconnectPoolSize
+
+		for {
+			if d.Closed() {
+				d.Close()
+				return
+			}
+
+			if !d.refillPreconnectPool() {
+				time.Sleep(time.Second)
+			}
+		}
+
+	})
 }
 
 func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
-	for c := d.takeFromPool(); c != nil; c = d.takeFromPool() {
+	if c := d.takeFromPool(); c != nil {
 		if conn, err := d.dialVia(ctx, c, network, address); err == nil {
 			return conn, err
 		}
 	}
 
-	connID := atomic.AddUint64(&d.lastID, 1)
-	conn, err := d.Connector.Connect(log.WithField("upstream_conn", connID))
+	mc, err := d.makeConn()
 
 	if err != nil {
 		return nil, err
 	}
 
-	return d.dialVia(ctx, conn, network, address)
+	return d.dialVia(ctx, mc, network, address)
 }
 
 func (d *Dialer) dialVia(ctx context.Context, c *MultiplexedConnection, network, address string) (net.Conn, error) {
@@ -47,9 +89,45 @@ func (d *Dialer) dialVia(ctx context.Context, c *MultiplexedConnection, network,
 		return nil, err
 	}
 
-	d.putToPool(c)
+	if c.Accepting() {
+		d.putToPool(c)
+	}
 
 	return conn, err
+}
+
+func (d *Dialer) refillPreconnectPool() bool {
+	d.m.Lock()
+	cnt := len(d.connPool)
+	d.m.Unlock()
+
+	max := cnt
+	if cnt < d.prevPoolSize {
+		max = d.prevPoolSize
+	}
+	logger := log.WithField("seen_pool_size", max)
+
+	if max >= d.PreconnectPoolSize {
+		d.prevPoolSize = cnt
+		logger.Trace("preconnect pool full")
+		return false
+	}
+
+	logger.Info("preconnect triggered")
+
+	conn, err := d.makeConn()
+	if err != nil {
+		log.WithError(err).Error("filling upstream connection pool")
+		return false
+	}
+
+	d.putToPool(conn)
+	return true
+}
+
+func (d *Dialer) makeConn() (*MultiplexedConnection, error) {
+	connID := atomic.AddUint64(&d.lastID, 1)
+	return d.Connector.Connect(log.WithField("upstream_conn", connID))
 }
 
 func (d *Dialer) takeFromPool() *MultiplexedConnection {

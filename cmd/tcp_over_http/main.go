@@ -48,6 +48,9 @@ func main() {
 			localAddr := args[0]
 			remoteAddr := args[1]
 
+			dialer.PreconnectPoolSize = 2
+			dialer.EnablePreconnect()
+
 			lsn, err := net.Listen("tcp", localAddr)
 			if err != nil {
 				log.WithError(err).Fatal("listen failed")
@@ -80,6 +83,10 @@ func main() {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			localAddr := args[0]
+
+			dialer.PreconnectPoolSize = 5
+			dialer.EnablePreconnect()
+
 			server := &socks5_server.Socks5Server{
 				Dialer: dialer.DialContext,
 			}

@@ -17,14 +17,12 @@ import (
 var ErrLimitExceeded = errors.New("connection limit exceeded")
 
 type MultiplexedConnection struct {
-	m      sync.Mutex
-	closed bool
-
-	cntActive, cntUsed int
-	config             *MultiplexedConnectionConfig
-
-	conn    net.Conn
+	config  *MultiplexedConnectionConfig
 	session *yamux.Session
+
+	m                  sync.Mutex
+	accepting, closed  bool
+	cntActive, cntUsed int
 }
 
 type MultiplexedConnectionConfig struct {
@@ -49,9 +47,9 @@ func NewMultiplexedConnection(conn net.Conn, config *MultiplexedConnectionConfig
 	}
 
 	mc := &MultiplexedConnection{
-		config:  config,
-		conn:    conn,
-		session: session,
+		config:    config,
+		session:   session,
+		accepting: true,
 	}
 
 	return mc, nil
@@ -106,39 +104,46 @@ func (c *MultiplexedConnection) DialContext(ctx context.Context, network, addres
 func (c *MultiplexedConnection) Close() {
 	c.m.Lock()
 	defer c.m.Unlock()
+	c.accepting = false
+	c.checkClose()
+}
 
-	c.closed = true
-	if c.cntActive == 0 {
-		c.config.Logger.Debug("no active connections when .Close called, closing session")
-		_ = c.session.Close()
-	}
+func (c *MultiplexedConnection) Accepting() bool {
+	return c.accepting
 }
 
 func (c *MultiplexedConnection) registerConnect() int {
 	c.m.Lock()
 	defer c.m.Unlock()
 
-	if c.closed {
+	if !c.accepting {
 		return 0
 	}
 
 	max := c.config.MaxMultiplexedConnections
-	if max > 0 && c.cntUsed >= max {
-		return 0
-	}
 
 	c.cntUsed++
 	c.cntActive++
+	if max > 0 && c.cntUsed >= max {
+		c.accepting = false
+	}
 	return c.cntUsed
 }
 
 func (c *MultiplexedConnection) registerDisconnect() {
 	c.m.Lock()
 	defer c.m.Unlock()
-
 	c.cntActive--
-	if c.cntActive == 0 && c.closed {
-		c.config.Logger.Debug("no active connections left, closing session")
-		_ = c.session.Close()
+	c.checkClose()
+}
+
+func (c *MultiplexedConnection) checkClose() {
+	needClose := c.cntActive == 0 && !c.accepting && !c.closed
+	if needClose {
+		go func() {
+			c.config.Logger.Debug("closing session")
+			_ = c.session.Close()
+		}()
+		c.closed = true
 	}
 }
