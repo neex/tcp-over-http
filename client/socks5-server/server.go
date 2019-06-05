@@ -31,6 +31,8 @@ func (p *Socks5Server) ListenAndServe(ctx context.Context, addr string) error {
 		_ = lsn.Close()
 	}()
 
+	log.Info("socks5 server started")
+
 	for {
 		conn, err := lsn.Accept()
 		if err != nil {

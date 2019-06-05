@@ -33,7 +33,7 @@ func main() {
 
 			conn, err := dialer.DialContext(context.Background(), "tcp", addr)
 			if err != nil {
-				log.Fatal(err)
+				log.WithError(err).Fatal("dial failed")
 			}
 
 			forward(conn, os.Stdin, os.Stdout)
@@ -50,13 +50,15 @@ func main() {
 
 			lsn, err := net.Listen("tcp", localAddr)
 			if err != nil {
-				log.Fatal(err)
+				log.WithError(err).Fatal("listen failed")
 			}
+
+			log.Info("forward server started")
 
 			for {
 				c, err := lsn.Accept()
 				if err != nil {
-					log.Fatal(err)
+					log.WithError(err).Fatal("accept failed")
 				}
 
 				go func(c net.Conn) {
@@ -83,7 +85,7 @@ func main() {
 			}
 
 			if err := server.ListenAndServe(context.Background(), localAddr); err != nil {
-				log.Fatal(err)
+				log.WithError(err).Fatal("socks5 listen failed")
 			}
 		},
 	}
