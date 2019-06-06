@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"sync"
 
@@ -23,7 +25,12 @@ func RunMultiplexedServer(ctx context.Context, conn net.Conn, dial DialContextFu
 		_ = conn.Close()
 	}()
 
-	if err := protocol.WritePacket(ctx, conn, &protocol.ConnectionResponse{Err: nil}); err != nil {
+	packet := &protocol.ConnectionResponse{
+		Err:     nil,
+		Padding: hex.EncodeToString(make([]byte, rand.Intn(2)*500+500)),
+	}
+
+	if err := protocol.WritePacket(ctx, conn, packet); err != nil {
 		return fmt.Errorf("error while writing initial response: %v", err)
 	}
 

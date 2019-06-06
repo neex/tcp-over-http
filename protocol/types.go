@@ -9,5 +9,6 @@ type ConnectionRequest struct {
 }
 
 type ConnectionResponse struct {
-	Err *string
+	Err     *string
+	Padding string
 }

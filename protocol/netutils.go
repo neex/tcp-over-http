@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/gob"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -30,7 +30,7 @@ func ReadResponse(ctx context.Context, from net.Conn) (*ConnectionResponse, erro
 
 func WritePacket(ctx context.Context, to net.Conn, val interface{}) error {
 	buf := bytes.NewBufferString(protocolMagic + "\x00\x00\x00\x00")
-	enc := gob.NewEncoder(buf)
+	enc := json.NewEncoder(buf)
 	if err := enc.Encode(val); err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ func readPacket(ctx context.Context, from net.Conn, val interface{}) error {
 		return checkContext(err)
 	}
 
-	decoder := gob.NewDecoder(bytes.NewReader(data))
+	decoder := json.NewDecoder(bytes.NewReader(data))
 	if err := decoder.Decode(val); err != nil {
 		return err
 	}
