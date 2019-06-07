@@ -5,7 +5,9 @@ import (
 	"io"
 	"net"
 	"os"
+	"regexp"
 	"sync"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -16,9 +18,11 @@ import (
 
 func main() {
 	var (
-		dialer   *client.Dialer
-		logLevel string
-		poolSize int
+		dialer             *client.Dialer
+		logLevel           string
+		directDialRegexp   string
+		directDialCompiled *regexp.Regexp
+		poolSize           int
 	)
 
 	cmdDial := &cobra.Command{
@@ -93,12 +97,29 @@ func main() {
 				Dialer: dialer.DialContext,
 			}
 
+			if directDialCompiled != nil {
+				server.Dialer = DirectDialMiddleware(directDialCompiled, server.Dialer, 20*time.Second)
+			}
+
 			if err := server.ListenAndServe(context.Background(), localAddr); err != nil {
 				log.WithError(err).Fatal("socks5 listen failed")
 			}
 		},
 	}
 	cmdSocks5.PersistentFlags().IntVar(&poolSize, "preconnect-pool", 5, "preconnect pool size")
+	cmdSocks5.PersistentFlags().StringVar(&directDialRegexp, "direct-dial", "", "the regexp for addresses that should be dialed without proxy")
+	cmdSocks5.PreRunE = func(cmd *cobra.Command, args []string) error {
+		if directDialRegexp == "" {
+			return nil
+		}
+		var err error
+		directDialCompiled, err = regexp.Compile(directDialRegexp)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
 	var configFilename string
 	rootCmd := &cobra.Command{Use: "tcp_over_http"}
 	rootCmd.AddCommand(cmdDial, cmdForward, cmdSocks5)

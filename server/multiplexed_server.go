@@ -12,12 +12,11 @@ import (
 	"github.com/hashicorp/yamux"
 	log "github.com/sirupsen/logrus"
 
+	"tcp-over-http/common"
 	"tcp-over-http/protocol"
 )
 
-type DialContextFunc = func(ctx context.Context, network, address string) (net.Conn, error)
-
-func RunMultiplexedServer(ctx context.Context, conn net.Conn, dial DialContextFunc) error {
+func RunMultiplexedServer(ctx context.Context, conn net.Conn, dial common.DialContextFunc) error {
 	newCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go func() {
@@ -57,7 +56,7 @@ func RunMultiplexedServer(ctx context.Context, conn net.Conn, dial DialContextFu
 	}
 }
 
-func processClient(ctx context.Context, conn net.Conn, dial DialContextFunc) error {
+func processClient(ctx context.Context, conn net.Conn, dial common.DialContextFunc) error {
 	newCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go func() {
