@@ -19,10 +19,14 @@ func (c *Connector) Connect(logger *log.Entry) (*MultiplexedConnection, error) {
 		return nil, err
 	}
 
-	host := parsed.Host
+	host := c.Config.DNSOverride
 
-	if _, _, err := net.SplitHostPort(host); err != nil {
-		host = net.JoinHostPort(host, parsed.Scheme)
+	if host == "" {
+		host = parsed.Host
+
+		if _, _, err := net.SplitHostPort(host); err != nil {
+			host = net.JoinHostPort(host, parsed.Scheme)
+		}
 	}
 
 	d := &net.Dialer{

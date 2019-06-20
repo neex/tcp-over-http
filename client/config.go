@@ -11,6 +11,7 @@ var TraceNetOps = false
 
 type Config struct {
 	Address                string        `yaml:"address"`
+	DNSOverride            string        `yaml:"dns_override"`
 	RemoteTimeout          time.Duration `yaml:"remote_timeout"`
 	ConnectTimeout         time.Duration `yaml:"connect_timeout"`
 	KeepAliveTimeout       time.Duration `yaml:"keep_alive_timeout"`
