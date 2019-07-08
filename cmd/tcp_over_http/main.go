@@ -13,7 +13,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"tcp-over-http/client"
-	socks5_server "tcp-over-http/client/socks5-server"
+	socks5server "tcp-over-http/client/socks5-server"
+	"tcp-over-http/client/tun"
 )
 
 func main() {
@@ -24,6 +25,7 @@ func main() {
 		directDialRegexp   string
 		directDialCompiled *regexp.Regexp
 		poolSize           int
+		tunDevice          string
 	)
 
 	cmdDial := &cobra.Command{
@@ -86,9 +88,9 @@ func main() {
 	cmdForward.PersistentFlags().IntVar(&poolSize, "preconnect-pool", 5, "preconnect pool size")
 	cmdForward.PersistentFlags().StringVar(&remoteNet, "remote-net", "tcp", "remote network (tcp/udp)")
 
-	cmdSocks5 := &cobra.Command{
-		Use:   "socks5 [local addr]",
-		Short: "Run socks5 server on local addr",
+	cmdProxy := &cobra.Command{
+		Use:   "proxy [local addr]",
+		Short: "Run socks5 server on local addr, optionally also forward tun connections",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			localAddr := args[0]
@@ -108,7 +110,13 @@ func main() {
 				}()
 			}
 
-			server := &socks5_server.Socks5Server{
+			if tunDevice != "" {
+				if err := tun.ForwardTCPFromTUN(tunDevice, dialer.DialContext); err != nil {
+					log.WithError(err).Fatal("tun forward failed")
+				}
+			}
+
+			server := &socks5server.Socks5Server{
 				Dialer: dialer.DialContext,
 			}
 
@@ -121,9 +129,10 @@ func main() {
 			}
 		},
 	}
-	cmdSocks5.PersistentFlags().IntVar(&poolSize, "preconnect-pool", 5, "preconnect pool size")
-	cmdSocks5.PersistentFlags().StringVar(&directDialRegexp, "direct-dial", "", "the regexp for addresses that should be dialed without proxy")
-	cmdSocks5.PreRunE = func(cmd *cobra.Command, args []string) error {
+	cmdProxy.PersistentFlags().IntVar(&poolSize, "preconnect-pool", 5, "preconnect pool size")
+	cmdProxy.PersistentFlags().StringVar(&directDialRegexp, "direct-dial", "", "the regexp for addresses that should be dialed without proxy")
+	cmdProxy.PersistentFlags().StringVar(&tunDevice, "tun", "", "tun device to listen on")
+	cmdProxy.PreRunE = func(cmd *cobra.Command, args []string) error {
 		if directDialRegexp == "" {
 			return nil
 		}
@@ -137,7 +146,7 @@ func main() {
 
 	var configFilename string
 	rootCmd := &cobra.Command{Use: "tcp_over_http"}
-	rootCmd.AddCommand(cmdDial, cmdForward, cmdSocks5)
+	rootCmd.AddCommand(cmdDial, cmdForward, cmdProxy)
 	rootCmd.PersistentFlags().StringVarP(&configFilename, "config", "c", "./config.yaml", "path to config")
 	rootCmd.PersistentFlags().StringVar(&logLevel, "loglevel", "", "loglevel")
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {

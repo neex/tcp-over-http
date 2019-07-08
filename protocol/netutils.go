@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sync"
 )
 
 const protocolMagic = "Elda"
@@ -39,10 +40,13 @@ func WritePacket(ctx context.Context, to net.Conn, val interface{}) error {
 	data := buf.Bytes()
 	binary.BigEndian.PutUint32(data[4:8], uint32(l))
 
+	var wg sync.WaitGroup
 	newCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	defer func() { cancel(); wg.Wait() }()
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		<-newCtx.Done()
 		if ctx.Err() != nil {
 			_ = to.Close()
@@ -58,10 +62,13 @@ func WritePacket(ctx context.Context, to net.Conn, val interface{}) error {
 }
 
 func readPacket(ctx context.Context, from net.Conn, val interface{}) error {
+	var wg sync.WaitGroup
 	newCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	defer func() { cancel(); wg.Wait() }()
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		<-newCtx.Done()
 		if ctx.Err() != nil {
 			_ = from.Close()
