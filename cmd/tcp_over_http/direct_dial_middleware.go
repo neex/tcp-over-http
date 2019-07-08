@@ -11,9 +11,7 @@ import (
 	"tcp-over-http/common"
 )
 
-func DirectDialMiddleware(directHosts *regexp.Regexp,
-	next common.DialContextFunc,
-	timeout time.Duration) common.DialContextFunc {
+func DirectDialMiddleware(directHosts *regexp.Regexp, timeout time.Duration, next common.DialContextFunc) common.DialContextFunc {
 
 	directDialer := net.Dialer{Timeout: timeout}
 

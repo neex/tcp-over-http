@@ -98,7 +98,7 @@ func main() {
 			}
 
 			if directDialCompiled != nil {
-				server.Dialer = DirectDialMiddleware(directDialCompiled, server.Dialer, 20*time.Second)
+				server.Dialer = DirectDialMiddleware(directDialCompiled, 20*time.Second, server.Dialer)
 			}
 
 			if err := server.ListenAndServe(context.Background(), localAddr); err != nil {
