@@ -56,6 +56,13 @@ func RunMultiplexedServer(ctx context.Context, conn net.Conn, dial common.DialCo
 	}
 }
 
+var allowedNets = map[string]struct{}{
+	"tcp":  {},
+	"udp":  {},
+	"tcp6": {},
+	"udp6": {},
+}
+
 func processClient(ctx context.Context, conn net.Conn, dial common.DialContextFunc) error {
 	newCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -68,7 +75,10 @@ func processClient(ctx context.Context, conn net.Conn, dial common.DialContextFu
 	if err != nil {
 		return err
 	}
-
+	if _, ok := allowedNets[req.Network]; !ok {
+		err := fmt.Sprintf("Network %#v not allowed", req.Network)
+		return protocol.WritePacket(newCtx, conn, &protocol.ConnectionResponse{Err: &err})
+	}
 	dialCtx, cancelDialCtx := context.WithTimeout(newCtx, req.Timeout)
 	upstreamConn, err := dial(dialCtx, req.Network, req.Address)
 	if upstreamConn != nil {

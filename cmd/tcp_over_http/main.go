@@ -20,6 +20,7 @@ func main() {
 	var (
 		dialer             *client.Dialer
 		logLevel           string
+		remoteNet          string
 		directDialRegexp   string
 		directDialCompiled *regexp.Regexp
 		poolSize           int
@@ -36,7 +37,7 @@ func main() {
 
 			addr := args[0]
 
-			conn, err := dialer.DialContext(context.Background(), "tcp", addr)
+			conn, err := dialer.DialContext(context.Background(), remoteNet, addr)
 			if err != nil {
 				log.WithError(err).Fatal("dial failed")
 			}
@@ -44,6 +45,7 @@ func main() {
 			forward(conn, os.Stdin, os.Stdout)
 		},
 	}
+	cmdDial.PersistentFlags().StringVar(&remoteNet, "remote-net", "tcp", "remote network (tcp/udp)")
 
 	cmdForward := &cobra.Command{
 		Use:   "forward [local addr] [remote addr]",
@@ -70,7 +72,7 @@ func main() {
 				}
 
 				go func(c net.Conn) {
-					conn, err := dialer.DialContext(context.Background(), "tcp", remoteAddr)
+					conn, err := dialer.DialContext(context.Background(), remoteNet, remoteAddr)
 					if err != nil {
 						log.WithError(err).Error("dial failed early")
 						return
@@ -82,6 +84,7 @@ func main() {
 		},
 	}
 	cmdForward.PersistentFlags().IntVar(&poolSize, "preconnect-pool", 5, "preconnect pool size")
+	cmdForward.PersistentFlags().StringVar(&remoteNet, "remote-net", "tcp", "remote network (tcp/udp)")
 
 	cmdSocks5 := &cobra.Command{
 		Use:   "socks5 [local addr]",
