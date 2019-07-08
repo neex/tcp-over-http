@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"net"
 	"sync"
@@ -81,6 +82,14 @@ func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.
 	}
 
 	return d.dialVia(ctx, mc, network, address)
+}
+
+func (d *Dialer) Ping() (time.Duration, error) {
+	if c := d.takeFromPool(); c != nil {
+		defer d.putToPool(c)
+		return c.Ping()
+	}
+	return 0, errors.New("no active connections")
 }
 
 func (d *Dialer) dialVia(ctx context.Context, c *MultiplexedConnection, network, address string) (net.Conn, error) {

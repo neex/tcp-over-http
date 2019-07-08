@@ -90,8 +90,20 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			localAddr := args[0]
 
-			dialer.PreconnectPoolSize = poolSize
-			dialer.EnablePreconnect()
+			if poolSize > 0 {
+				dialer.PreconnectPoolSize = poolSize
+				dialer.EnablePreconnect()
+				go func() {
+					for range time.Tick(10 * time.Second) {
+						t, err := dialer.Ping()
+						if err != nil {
+							log.WithError(err).Error("ping error")
+							continue
+						}
+						log.WithField("roundtrip", t).Info("ping")
+					}
+				}()
+			}
 
 			server := &socks5_server.Socks5Server{
 				Dialer: dialer.DialContext,

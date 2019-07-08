@@ -124,6 +124,10 @@ func (c *MultiplexedConnection) IsDialable() bool {
 	return true
 }
 
+func (c *MultiplexedConnection) Ping() (time.Duration, error) {
+	return c.session.Ping()
+}
+
 func (c *MultiplexedConnection) registerConnect() int {
 	c.m.Lock()
 	defer c.m.Unlock()
