@@ -10,6 +10,8 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+
+	"tcp-over-http/protocol"
 )
 
 func init() {
@@ -69,9 +71,15 @@ func (d *Dialer) EnablePreconnect() {
 }
 
 func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	maybeWrap := func(c net.Conn) net.Conn {
+		if c != nil && (network == "udp" || network == "udp4" || network == "udp6") {
+			return protocol.NewPacketConnection(c)
+		}
+		return c
+	}
 	if c := d.takeFromPool(); c != nil {
 		if conn, err := d.dialVia(ctx, c, network, address); err == nil {
-			return conn, err
+			return maybeWrap(conn), err
 		}
 	}
 
@@ -81,7 +89,8 @@ func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.
 		return nil, err
 	}
 
-	return d.dialVia(ctx, mc, network, address)
+	conn, err := d.dialVia(ctx, mc, network, address)
+	return maybeWrap(conn), err
 }
 
 func (d *Dialer) Ping() (time.Duration, error) {

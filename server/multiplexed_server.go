@@ -56,11 +56,13 @@ func RunMultiplexedServer(ctx context.Context, conn net.Conn, dial common.DialCo
 	}
 }
 
-var allowedNets = map[string]struct{}{
-	"tcp":  {},
-	"udp":  {},
-	"tcp6": {},
-	"udp6": {},
+var isPacket = map[string]bool{
+	"tcp":  false,
+	"tcp4": false,
+	"tcp6": false,
+	"udp":  true,
+	"udp4": true,
+	"udp6": true,
 }
 
 func processClient(ctx context.Context, conn net.Conn, dial common.DialContextFunc) error {
@@ -75,7 +77,8 @@ func processClient(ctx context.Context, conn net.Conn, dial common.DialContextFu
 	if err != nil {
 		return err
 	}
-	if _, ok := allowedNets[req.Network]; !ok {
+	needPacket, ok := isPacket[req.Network]
+	if !ok {
 		err := fmt.Sprintf("Network %#v not allowed", req.Network)
 		return protocol.WritePacket(newCtx, conn, &protocol.ConnectionResponse{Err: &err})
 	}
@@ -100,17 +103,23 @@ func processClient(ctx context.Context, conn net.Conn, dial common.DialContextFu
 		return writeErr
 	}
 
+	if needPacket {
+		conn = protocol.NewPacketConnection(conn)
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		_, _ = io.Copy(conn, upstreamConn)
+		buf := make([]byte, 65536)
+		_, _ = io.CopyBuffer(conn, upstreamConn, buf)
 		_ = conn.Close()
 	}()
 
 	go func() {
 		defer wg.Done()
-		_, _ = io.Copy(upstreamConn, conn)
+		buf := make([]byte, 65536)
+		_, _ = io.CopyBuffer(upstreamConn, conn, buf)
 		_ = upstreamConn.Close()
 	}()
 
