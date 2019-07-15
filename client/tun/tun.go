@@ -1,12 +1,9 @@
 package tun
 
 import (
-	"context"
 	"errors"
 	"math/rand"
 	"net"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/netstack/tcpip"
@@ -18,6 +15,7 @@ import (
 	"github.com/google/netstack/tcpip/network/ipv6"
 	"github.com/google/netstack/tcpip/stack"
 	"github.com/google/netstack/tcpip/transport/tcp"
+	"github.com/google/netstack/tcpip/transport/udp"
 	"github.com/google/netstack/waiter"
 	log "github.com/sirupsen/logrus"
 
@@ -31,7 +29,7 @@ func ForwardTCPFromTUN(tunName string, forward common.DialContextFunc) error {
 	}
 
 	s := stack.New([]string{ipv4.ProtocolName, ipv6.ProtocolName, arp.ProtocolName},
-		[]string{tcp.ProtocolName},
+		[]string{tcp.ProtocolName, udp.ProtocolName},
 		stack.Options{})
 
 	mtu, err := rawfile.GetMTU(tunName)
@@ -63,129 +61,36 @@ func ForwardTCPFromTUN(tunName string, forward common.DialContextFunc) error {
 		return errors.New(err.String())
 	}
 
-	var routes []tcpip.Route
-	for i, proto := range []tcpip.NetworkProtocolNumber{ipv4.ProtocolNumber, ipv6.ProtocolNumber} {
-		zero := strings.Repeat("\x00", 4+12*i)
-		addr := tcpip.Address(zero)
-		mask := tcpip.AddressMask(zero)
+	s.SetPromiscuousMode(1, true)
 
-		nw, err := tcpip.NewSubnet(addr, mask)
-		if err != nil {
-			return err
-		}
-
-		if err := s.AddSubnet(1, proto, nw); err != nil {
-			return errors.New(err.String())
-		}
-
-		routes = append(routes, tcpip.Route{Destination: addr, Mask: mask, NIC: 1})
-	}
-
-	s.SetRouteTable(routes)
-
-	fwd := tcp.NewForwarder(s, 0, 10, func(r *tcp.ForwarderRequest) {
+	tcpForwarder := tcp.NewForwarder(s, 0, 10, func(r *tcp.ForwarderRequest) {
 		wq := new(waiter.Queue)
 		ep, err := r.CreateEndpoint(wq)
-		r.Complete(false)
 		if err != nil {
 			id := r.ID()
 			addr := net.TCPAddr{IP: []byte(id.LocalAddress), Port: int(id.LocalPort)}
-			log.WithField("addr", addr).WithError(errors.New(err.String())).Error("endpoint not created")
+			log.WithField("addr", addr).WithError(errors.New(err.String())).Error("tcp endpoint not created")
 			return
 		}
-		forwardTCP(wq, ep, forward)
+		r.Complete(false)
+		ForwardTCPEndpoint(wq, ep, forward)
 	})
-	s.SetTransportProtocolHandler(tcp.ProtocolNumber, fwd.HandlePacket)
+	s.SetTransportProtocolHandler(tcp.ProtocolNumber, tcpForwarder.HandlePacket)
+
+	udpForwarder := udp.NewForwarder(s, func(r *udp.ForwarderRequest) {
+		wq := new(waiter.Queue)
+		ep, err := r.CreateEndpoint(wq)
+		if err != nil {
+			id := r.ID()
+			addr := net.UDPAddr{IP: []byte(id.LocalAddress), Port: int(id.LocalPort)}
+			log.WithField("addr", addr).WithError(errors.New(err.String())).Error("tcp endpoint not created")
+			return
+		}
+		go ForwardUDPEndpoint(wq, ep, forward)
+	})
+	s.SetTransportProtocolHandler(udp.ProtocolNumber, udpForwarder.HandlePacket)
+
 	return nil
-}
-
-func forwardTCP(wq *waiter.Queue, ep tcpip.Endpoint, forward common.DialContextFunc) {
-	defer ep.Close()
-	netstackAddr, netstackErr := ep.GetLocalAddress()
-	if netstackErr != nil {
-		log.WithError(errors.New(netstackErr.String())).Error("error while retrieving localAddr")
-		return
-	}
-	tcpAddr := net.TCPAddr{IP: net.IP([]byte(netstackAddr.Addr)), Port: int(netstackAddr.Port)}
-
-	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
-	conn, err := forward(ctx, tcpAddr.Network(), tcpAddr.String())
-	cancel()
-	if err != nil {
-		log.WithField("addr", tcpAddr).WithError(err).Error("error while dialing")
-		return
-	}
-
-	log.WithField("addr", tcpAddr.String()).Info("forward from tun")
-
-	defer func() { _ = conn.Close() }()
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		waitEntry, notifyCh := waiter.NewChannelEntry(nil)
-		wq.EventRegister(&waitEntry, waiter.EventIn)
-		defer wq.EventUnregister(&waitEntry)
-
-		for {
-			v, _, netStackErr := ep.Read(nil)
-			if netStackErr != nil {
-				if netStackErr == tcpip.ErrWouldBlock {
-					<-notifyCh
-					continue
-				}
-
-				break
-			}
-
-			_, err := conn.Write(v)
-			if err != nil {
-				break
-			}
-		}
-
-		_ = conn.Close()
-	}()
-
-	go func() {
-		defer wg.Done()
-
-		waitEntry, notifyCh := waiter.NewChannelEntry(nil)
-		wq.EventRegister(&waitEntry, waiter.EventOut)
-		defer wq.EventUnregister(&waitEntry)
-
-	writeLoop:
-		for {
-			buf := make([]byte, 32*1024)
-			size, err := conn.Read(buf)
-			if err != nil {
-				break
-			}
-
-			var totalWritten uint64
-			for totalWritten < uint64(size) {
-				toWrite := buf[totalWritten:size]
-				written, _, netStackErr := ep.Write(tcpip.SlicePayload(toWrite), tcpip.WriteOptions{})
-				if written > 0 {
-					totalWritten += uint64(written)
-					continue
-				}
-
-				if netStackErr == tcpip.ErrWouldBlock {
-					<-notifyCh
-					continue
-				}
-
-				break writeLoop
-			}
-		}
-
-		ep.Close()
-	}()
-
-	wg.Wait()
 }
 
 func init() {
