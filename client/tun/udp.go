@@ -93,7 +93,7 @@ func ForwardUDPEndpoint(wq *waiter.Queue, ep tcpip.Endpoint, forward common.Dial
 		defer wg.Done()
 
 		for {
-			buf := make([]byte, 128*1024)
+			buf := make([]byte, 65536)
 			if err := conn.SetDeadline(time.Now().Add(getTimeout())); err != nil {
 				log.WithField("addr", udpAddr.String()).WithError(err).Error("error while setting deadline")
 				break
