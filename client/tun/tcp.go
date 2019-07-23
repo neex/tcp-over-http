@@ -9,13 +9,14 @@ import (
 
 	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/waiter"
-	log "github.com/sirupsen/logrus"
 
 	"tcp-over-http/common"
 )
 
 func ForwardTCPEndpoint(wq *waiter.Queue, ep tcpip.Endpoint, forward common.DialContextFunc) {
 	defer ep.Close()
+	log := GetLogger(ep)
+
 	netstackAddr, netstackErr := ep.GetLocalAddress()
 	if netstackErr != nil {
 		log.WithError(errors.New(netstackErr.String())).Error("error while retrieving localAddr")

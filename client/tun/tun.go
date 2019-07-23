@@ -79,17 +79,18 @@ func ForwardTCPFromTUN(tunName string, forward common.DialContextFunc) error {
 
 	udpForwarder := udp.NewForwarder(s, func(r *udp.ForwarderRequest) {
 		wq := new(waiter.Queue)
-		ep, err := r.CreateEndpoint(wq)
+		ep, err := CreateUDPEndpoint(wq, r)
 		id := r.ID()
 		addr := net.UDPAddr{IP: []byte(id.LocalAddress), Port: int(id.LocalPort)}
 		if err != nil {
-			log.WithField("addr", addr).WithError(errors.New(err.String())).Error("tcp endpoint not created")
+			log.WithField("addr", addr).WithError(errors.New(err.String())).Error("udp endpoint not created")
 			return
 		}
 		if addr.String() == "8.8.8.8:53" {
-			// TODO: spoof dns
+			go HandleDNS(wq, ep, forward)
+		} else {
+			go ForwardUDPEndpoint(wq, ep, forward)
 		}
-		go ForwardUDPEndpoint(wq, ep, forward)
 	})
 	s.SetTransportProtocolHandler(udp.ProtocolNumber, udpForwarder.HandlePacket)
 

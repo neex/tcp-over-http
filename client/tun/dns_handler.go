@@ -2,9 +2,8 @@ package tun
 
 import (
 	"context"
-	"errors"
-	"net"
 	"sync"
+	"tcp-over-http/protocol"
 	"time"
 
 	"github.com/google/netstack/tcpip"
@@ -13,27 +12,20 @@ import (
 	"tcp-over-http/common"
 )
 
-const udpReceiveTimeout = 15 * time.Second
-
-func ForwardUDPEndpoint(wq *waiter.Queue, ep tcpip.Endpoint, forward common.DialContextFunc) {
+func HandleDNS(wq *waiter.Queue, ep tcpip.Endpoint, forward common.DialContextFunc) {
 	defer ep.Close()
+
 	log := GetLogger(ep)
-	netstackAddr, netstackErr := ep.GetLocalAddress()
-	if netstackErr != nil {
-		log.WithError(errors.New(netstackErr.String())).Error("error while retrieving localAddr")
-		return
-	}
-	udpAddr := net.UDPAddr{IP: net.IP([]byte(netstackAddr.Addr)), Port: int(netstackAddr.Port)}
 
 	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
-	conn, err := forward(ctx, udpAddr.Network(), udpAddr.String())
+	connRaw, err := forward(ctx, "tcp", "1.1.1.1:53")
 	cancel()
 	if err != nil {
-		log.WithField("addr", udpAddr).WithError(err).Error("error while dialing")
+		log.WithError(err).Error("error while dialing")
 		return
 	}
-
-	log.WithField("addr", udpAddr.String()).Info("forward from tun (udp)")
+	conn := protocol.NewPacketConnection(connRaw)
+	log.Info("forward from tun (dns)")
 
 	defer func() { _ = conn.Close() }()
 
@@ -44,10 +36,11 @@ func ForwardUDPEndpoint(wq *waiter.Queue, ep tcpip.Endpoint, forward common.Dial
 		defer m.Unlock()
 		lastAction = time.Now()
 	}
+
 	getTimeout := func() time.Duration {
 		m.Lock()
 		defer m.Unlock()
-		return time.Now().Add(udpReceiveTimeout).Sub(lastAction)
+		return time.Now().Add(10 * time.Second).Sub(lastAction)
 	}
 
 	var wg sync.WaitGroup
@@ -82,6 +75,7 @@ func ForwardUDPEndpoint(wq *waiter.Queue, ep tcpip.Endpoint, forward common.Dial
 			actionHappened()
 			_, err := conn.Write(v)
 			if err != nil {
+				log.WithError(err).Error("dns response not written")
 				break
 			}
 		}
@@ -91,11 +85,10 @@ func ForwardUDPEndpoint(wq *waiter.Queue, ep tcpip.Endpoint, forward common.Dial
 
 	go func() {
 		defer wg.Done()
-
 		for {
 			buf := make([]byte, 65536)
 			if err := conn.SetDeadline(time.Now().Add(getTimeout())); err != nil {
-				log.WithField("addr", udpAddr.String()).WithError(err).Error("error while setting deadline")
+				log.WithError(err).Error("error while setting deadline")
 				break
 			}
 			size, err := conn.Read(buf)
@@ -109,7 +102,6 @@ func ForwardUDPEndpoint(wq *waiter.Queue, ep tcpip.Endpoint, forward common.Dial
 				break
 			}
 		}
-
 		ep.Close()
 	}()
 
