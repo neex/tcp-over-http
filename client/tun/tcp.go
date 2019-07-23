@@ -28,11 +28,11 @@ func ForwardTCPEndpoint(wq *waiter.Queue, ep tcpip.Endpoint, forward common.Dial
 	conn, err := forward(ctx, tcpAddr.Network(), tcpAddr.String())
 	cancel()
 	if err != nil {
-		log.WithField("addr", tcpAddr).WithError(err).Error("error while dialing")
+		log.WithError(err).Error("error while dialing")
 		return
 	}
 
-	log.WithField("addr", tcpAddr.String()).Info("forward from tun (tcp)")
+	log.Info("forward from tun (tcp)")
 
 	defer func() { _ = conn.Close() }()
 

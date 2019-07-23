@@ -29,11 +29,11 @@ func ForwardUDPEndpoint(wq *waiter.Queue, ep tcpip.Endpoint, forward common.Dial
 	conn, err := forward(ctx, udpAddr.Network(), udpAddr.String())
 	cancel()
 	if err != nil {
-		log.WithField("addr", udpAddr).WithError(err).Error("error while dialing")
+		log.WithError(err).Error("error while dialing")
 		return
 	}
 
-	log.WithField("addr", udpAddr.String()).Info("forward from tun (udp)")
+	log.Info("forward from tun (udp)")
 
 	defer func() { _ = conn.Close() }()
 
@@ -95,7 +95,7 @@ func ForwardUDPEndpoint(wq *waiter.Queue, ep tcpip.Endpoint, forward common.Dial
 		for {
 			buf := make([]byte, 65536)
 			if err := conn.SetDeadline(time.Now().Add(getTimeout())); err != nil {
-				log.WithField("addr", udpAddr.String()).WithError(err).Error("error while setting deadline")
+				log.WithError(err).Error("error while setting deadline")
 				break
 			}
 			size, err := conn.Read(buf)

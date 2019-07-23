@@ -6,11 +6,10 @@ import (
 	"strconv"
 	"unsafe"
 
+	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/tcpip/stack"
 	"github.com/google/netstack/tcpip/transport/udp"
 	"github.com/google/netstack/waiter"
-
-	"github.com/google/netstack/tcpip"
 	log "github.com/sirupsen/logrus"
 )
 
