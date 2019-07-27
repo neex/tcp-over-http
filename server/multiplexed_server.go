@@ -12,8 +12,8 @@ import (
 	"github.com/hashicorp/yamux"
 	log "github.com/sirupsen/logrus"
 
-	"tcp-over-http/common"
-	"tcp-over-http/protocol"
+	"github.com/neex/tcp-over-http/common"
+	"github.com/neex/tcp-over-http/protocol"
 )
 
 func RunMultiplexedServer(ctx context.Context, conn net.Conn, dial common.DialContextFunc) error {

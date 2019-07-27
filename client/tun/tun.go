@@ -19,10 +19,11 @@ import (
 	"github.com/google/netstack/waiter"
 	log "github.com/sirupsen/logrus"
 
-	"tcp-over-http/common"
+	"github.com/neex/tcp-over-http/client/tun/dns"
+	"github.com/neex/tcp-over-http/common"
 )
 
-func ForwardTCPFromTUN(tunName string, forward common.DialContextFunc) error {
+func ForwardTransportFromTUN(tunName string, forward common.DialContextFunc) error {
 	macAddr, err := net.ParseMAC("de:ad:be:ee:ee:ef")
 	if err != nil {
 		panic(err)
@@ -77,6 +78,7 @@ func ForwardTCPFromTUN(tunName string, forward common.DialContextFunc) error {
 	})
 	s.SetTransportProtocolHandler(tcp.ProtocolNumber, tcpForwarder.HandlePacket)
 
+	dnsForwarder := dns.NewForwarder(forward)
 	udpForwarder := udp.NewForwarder(s, func(r *udp.ForwarderRequest) {
 		wq := new(waiter.Queue)
 		ep, err := CreateUDPEndpoint(wq, r)
@@ -87,7 +89,7 @@ func ForwardTCPFromTUN(tunName string, forward common.DialContextFunc) error {
 			return
 		}
 		if addr.String() == "8.8.8.8:53" {
-			go HandleDNS(wq, ep, forward)
+			go HandleDNS(wq, ep, dnsForwarder)
 		} else {
 			go ForwardUDPEndpoint(wq, ep, forward)
 		}

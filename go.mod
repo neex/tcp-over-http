@@ -1,4 +1,4 @@
-module tcp-over-http
+module github.com/neex/tcp-over-http
 
 go 1.12
 

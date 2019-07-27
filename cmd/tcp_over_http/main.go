@@ -12,9 +12,9 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"tcp-over-http/client"
-	socks5server "tcp-over-http/client/socks5-server"
-	"tcp-over-http/client/tun"
+	"github.com/neex/tcp-over-http/client"
+	socks5server "github.com/neex/tcp-over-http/client/socks5-server"
+	"github.com/neex/tcp-over-http/client/tun"
 )
 
 func main() {
@@ -111,7 +111,7 @@ func main() {
 			}
 
 			if tunDevice != "" {
-				if err := tun.ForwardTCPFromTUN(tunDevice, dialer.DialContext); err != nil {
+				if err := tun.ForwardTransportFromTUN(tunDevice, dialer.DialContext); err != nil {
 					log.WithError(err).Fatal("tun forward failed")
 				}
 			}

@@ -1,79 +1,57 @@
 package tun
 
 import (
-	"context"
 	"sync"
 	"time"
 
 	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/waiter"
 
-	"tcp-over-http/common"
-	"tcp-over-http/protocol"
+	"github.com/neex/tcp-over-http/client/tun/dns"
 )
 
-func HandleDNS(wq *waiter.Queue, ep tcpip.Endpoint, forward common.DialContextFunc) {
+func HandleDNS(wq *waiter.Queue, ep tcpip.Endpoint, forwarder *dns.Forwarder) {
 	defer ep.Close()
 
 	log := GetLogger(ep)
 
-	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
-	connRaw, err := forward(ctx, "tcp", "1.1.1.1:53")
-	cancel()
-	if err != nil {
-		log.WithError(err).Error("error while dialing")
-		return
-	}
-	conn := protocol.NewPacketConnection(connRaw)
-	log.Info("forward from tun (dns)")
-
-	defer func() { _ = conn.Close() }()
+	waitEntry, notifyCh := waiter.NewChannelEntry(nil)
+	wq.EventRegister(&waitEntry, waiter.EventIn)
+	defer wq.EventUnregister(&waitEntry)
 
 	var wg sync.WaitGroup
-	wg.Add(2)
 
-	go func() {
-		defer wg.Done()
-		waitEntry, notifyCh := waiter.NewChannelEntry(nil)
-		wq.EventRegister(&waitEntry, waiter.EventIn)
-		defer wq.EventUnregister(&waitEntry)
+	for {
+		v, _, netStackErr := ep.Read(nil)
+		if netStackErr != nil {
+			if netStackErr == tcpip.ErrWouldBlock {
+				t := time.NewTimer(10 * time.Second)
+				hasData := false
+				select {
+				case <-notifyCh:
+					hasData = true
+				case <-t.C:
+				}
+				t.Stop()
 
-		for {
-			v, _, netStackErr := ep.Read(nil)
-			if netStackErr != nil {
-				if netStackErr == tcpip.ErrWouldBlock {
-					<-notifyCh
+				if hasData {
 					continue
 				}
-
-				break
 			}
 
-			_, err := conn.Write(v)
-			if err != nil {
-				log.WithError(err).Error("dns request not written")
-				break
-			}
+			break
 		}
-
-		_ = conn.Close()
-	}()
-
-	go func() {
-		defer wg.Done()
-		for {
-			buf := make([]byte, 65536)
-			size, err := conn.Read(buf)
-			if err != nil {
-				break
+		log.Info("dns request received")
+		wg.Add(1)
+		forwarder.SendRequest([]byte(v), func(_ []byte, reply []byte) {
+			log.Info("dns reply received")
+			defer wg.Done()
+			if _, _, err := ep.Write(tcpip.SlicePayload(reply), tcpip.WriteOptions{}); err != nil {
+				ep.Close()
 			}
-			toWrite := buf[:size]
-			if _, _, err := ep.Write(tcpip.SlicePayload(toWrite), tcpip.WriteOptions{}); err != nil {
-				break
-			}
-		}
-		ep.Close()
-	}()
+		})
+	}
 
 	wg.Wait()
+	ep.Close()
 }

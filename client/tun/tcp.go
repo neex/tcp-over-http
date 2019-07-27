@@ -10,7 +10,7 @@ import (
 	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/waiter"
 
-	"tcp-over-http/common"
+	"github.com/neex/tcp-over-http/common"
 )
 
 func ForwardTCPEndpoint(wq *waiter.Queue, ep tcpip.Endpoint, forward common.DialContextFunc) {

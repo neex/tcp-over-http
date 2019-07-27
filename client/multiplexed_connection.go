@@ -11,7 +11,7 @@ import (
 	"github.com/hashicorp/yamux"
 	log "github.com/sirupsen/logrus"
 
-	"tcp-over-http/protocol"
+	"github.com/neex/tcp-over-http/protocol"
 )
 
 var ErrLimitExceeded = errors.New("connection limit exceeded")

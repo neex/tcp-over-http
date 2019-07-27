@@ -8,7 +8,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"tcp-over-http/common"
+	"github.com/neex/tcp-over-http/common"
 )
 
 func DirectDialMiddleware(directHosts *regexp.Regexp, timeout time.Duration, next common.DialContextFunc) common.DialContextFunc {

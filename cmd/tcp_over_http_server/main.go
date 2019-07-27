@@ -5,7 +5,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"tcp-over-http/server"
+	"github.com/neex/tcp-over-http/server"
 )
 
 func main() {

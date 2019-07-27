@@ -11,7 +11,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"tcp-over-http/protocol"
+	"github.com/neex/tcp-over-http/protocol"
 )
 
 type connectionWrapper struct {
