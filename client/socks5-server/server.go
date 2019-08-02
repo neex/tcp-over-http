@@ -7,13 +7,14 @@ import (
 	"io"
 	"net"
 	"strconv"
-	"sync"
 
 	log "github.com/sirupsen/logrus"
+
+	"github.com/neex/tcp-over-http/client/forwarder"
 )
 
 type Socks5Server struct {
-	Dialer func(ctx context.Context, network, address string) (net.Conn, error)
+	Forwarder *forwarder.Forwarder
 }
 
 func (p *Socks5Server) ListenAndServe(ctx context.Context, addr string) error {
@@ -141,38 +142,22 @@ func (p *Socks5Server) handleConn(ctx context.Context, conn net.Conn) error {
 	}
 
 	port := strconv.Itoa(int(buf[0])*256 + int(buf[1]))
-
 	address := net.JoinHostPort(host, port)
 
-	upstream, err := p.Dialer(ctx, "tcp", address)
+	err := p.Forwarder.ForwardConnection(ctx, &forwarder.ForwardRequest{
+		ClientConn: conn,
+		Network:    "tcp",
+		Address:    address,
+		OnConnected: func() {
+			_, _ = conn.Write(resp)
+		},
+	})
+
 	if err != nil {
 		resp[1] = 4
 		_, _ = conn.Write(resp)
 		return fmt.Errorf("host unreachable, %v", err)
 	}
-	go func() {
-		<-newCtx.Done()
-		_ = upstream.Close()
-	}()
 
-	if n, err := conn.Write(resp); n != len(resp) || err != nil {
-		return fmt.Errorf("write short during response, %v", err)
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		_, _ = io.Copy(upstream, conn)
-		_ = upstream.Close()
-	}()
-
-	go func() {
-		defer wg.Done()
-		_, _ = io.Copy(conn, upstream)
-		_ = conn.Close()
-	}()
-
-	wg.Wait()
 	return nil
 }

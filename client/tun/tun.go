@@ -1,10 +1,16 @@
 package tun
 
 import (
+	"context"
 	"errors"
 	"math/rand"
 	"net"
+	"strconv"
 	"time"
+
+	"github.com/google/netstack/tcpip/adapters/gonet"
+
+	"github.com/neex/tcp-over-http/client/forwarder"
 
 	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/tcpip/link/fdbased"
@@ -18,12 +24,9 @@ import (
 	"github.com/google/netstack/tcpip/transport/udp"
 	"github.com/google/netstack/waiter"
 	log "github.com/sirupsen/logrus"
-
-	"github.com/neex/tcp-over-http/client/tun/dns"
-	"github.com/neex/tcp-over-http/common"
 )
 
-func ForwardTransportFromTUN(tunName string, forward common.DialContextFunc) error {
+func ForwardTransportFromTUN(tunName string, f *forwarder.Forwarder) error {
 	macAddr, err := net.ParseMAC("de:ad:be:ee:ee:ef")
 	if err != nil {
 		panic(err)
@@ -74,11 +77,10 @@ func ForwardTransportFromTUN(tunName string, forward common.DialContextFunc) err
 			return
 		}
 		r.Complete(false)
-		ForwardTCPEndpoint(wq, ep, forward)
+		forwardNetstackEndpoint(wq, ep, "tcp", f)
 	})
 	s.SetTransportProtocolHandler(tcp.ProtocolNumber, tcpForwarder.HandlePacket)
 
-	dnsForwarder := dns.NewForwarder(forward)
 	udpForwarder := udp.NewForwarder(s, func(r *udp.ForwarderRequest) {
 		wq := new(waiter.Queue)
 		ep, err := CreateUDPEndpoint(wq, r)
@@ -88,15 +90,34 @@ func ForwardTransportFromTUN(tunName string, forward common.DialContextFunc) err
 			log.WithField("addr", addr).WithError(errors.New(err.String())).Error("udp endpoint not created")
 			return
 		}
-		if addr.String() == "8.8.8.8:53" {
-			go HandleDNS(wq, ep, dnsForwarder)
-		} else {
-			go ForwardUDPEndpoint(wq, ep, forward)
-		}
+		go forwardNetstackEndpoint(wq, ep, "udp", f)
 	})
 	s.SetTransportProtocolHandler(udp.ProtocolNumber, udpForwarder.HandlePacket)
 
 	return nil
+}
+
+func forwardNetstackEndpoint(wq *waiter.Queue, ep tcpip.Endpoint, network string, f *forwarder.Forwarder) {
+	defer ep.Close()
+	logger := GetLogger(ep).WithField("network", network)
+
+	conn := gonet.NewConn(wq, ep)
+	logger.Info("forward from tun")
+	addr, netstackErr := ep.GetLocalAddress()
+	if netstackErr != nil {
+		logger.WithError(errors.New(netstackErr.String())).Error("error while retrieving localAddr")
+		return
+	}
+	addrString := net.JoinHostPort(net.IP([]byte(addr.Addr)).String(), strconv.Itoa(int(addr.Port)))
+
+	err := f.ForwardConnection(context.TODO(), &forwarder.ForwardRequest{
+		ClientConn: conn,
+		Network:    network,
+		Address:    addrString,
+	})
+	if err != nil {
+		logger.WithError(err).Error("forwarder returned error")
+	}
 }
 
 func init() {

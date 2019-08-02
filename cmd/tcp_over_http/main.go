@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/neex/tcp-over-http/client/forwarder"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
@@ -110,18 +112,19 @@ func main() {
 				}()
 			}
 
+			f := &forwarder.Forwarder{Dial: dialer.DialContext, DialTimeout: 10 * time.Second}
+			if directDialCompiled != nil {
+				f.Dial = DirectDialMiddleware(directDialCompiled, 20*time.Second, f.Dial)
+			}
+
 			if tunDevice != "" {
-				if err := tun.ForwardTransportFromTUN(tunDevice, dialer.DialContext); err != nil {
+				if err := tun.ForwardTransportFromTUN(tunDevice, f); err != nil {
 					log.WithError(err).Fatal("tun forward failed")
 				}
 			}
 
 			server := &socks5server.Socks5Server{
-				Dialer: dialer.DialContext,
-			}
-
-			if directDialCompiled != nil {
-				server.Dialer = DirectDialMiddleware(directDialCompiled, 20*time.Second, server.Dialer)
+				Forwarder: f,
 			}
 
 			if err := server.ListenAndServe(context.Background(), localAddr); err != nil {
