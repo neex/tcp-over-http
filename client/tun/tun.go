@@ -8,11 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/google/netstack/tcpip/adapters/gonet"
-
-	"github.com/neex/tcp-over-http/client/forwarder"
-
 	"github.com/google/netstack/tcpip"
+	"github.com/google/netstack/tcpip/adapters/gonet"
 	"github.com/google/netstack/tcpip/link/fdbased"
 	"github.com/google/netstack/tcpip/link/rawfile"
 	"github.com/google/netstack/tcpip/link/tun"
@@ -24,6 +21,8 @@ import (
 	"github.com/google/netstack/tcpip/transport/udp"
 	"github.com/google/netstack/waiter"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/neex/tcp-over-http/client/forwarder"
 )
 
 func ForwardTransportFromTUN(tunName string, f *forwarder.Forwarder) error {

@@ -9,12 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/neex/tcp-over-http/client/forwarder"
-
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
 	"github.com/neex/tcp-over-http/client"
+	"github.com/neex/tcp-over-http/client/forwarder"
 	socks5server "github.com/neex/tcp-over-http/client/socks5-server"
 	"github.com/neex/tcp-over-http/client/tun"
 )
