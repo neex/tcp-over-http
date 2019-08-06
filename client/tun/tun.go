@@ -5,7 +5,6 @@ import (
 	"errors"
 	"math/rand"
 	"net"
-	"strconv"
 	"time"
 
 	"github.com/google/netstack/tcpip"
@@ -23,6 +22,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/neex/tcp-over-http/client/forwarder"
+	"github.com/neex/tcp-over-http/client/tun/netstack_hacks"
 )
 
 func ForwardTransportFromTUN(tunName string, f *forwarder.Forwarder) error {
@@ -31,7 +31,8 @@ func ForwardTransportFromTUN(tunName string, f *forwarder.Forwarder) error {
 		panic(err)
 	}
 
-	s := stack.New([]string{ipv4.ProtocolName, ipv6.ProtocolName, arp.ProtocolName},
+	s := stack.New(
+		[]string{ipv4.ProtocolName, ipv6.ProtocolName, arp.ProtocolName},
 		[]string{tcp.ProtocolName, udp.ProtocolName},
 		stack.Options{})
 
@@ -70,53 +71,47 @@ func ForwardTransportFromTUN(tunName string, f *forwarder.Forwarder) error {
 		wq := new(waiter.Queue)
 		ep, err := r.CreateEndpoint(wq)
 		if err != nil {
-			id := r.ID()
-			addr := net.TCPAddr{IP: []byte(id.LocalAddress), Port: int(id.LocalPort)}
-			log.WithField("addr", addr).WithError(errors.New(err.String())).Error("tcp endpoint not created")
+			log.WithError(errors.New(err.String())).Error("tcp endpoint not created")
 			return
 		}
 		r.Complete(false)
-		forwardNetstackEndpoint(wq, ep, "tcp", f)
+		forwardHelper(gonet.NewConn(wq, ep), "tcp", f)
 	})
 	s.SetTransportProtocolHandler(tcp.ProtocolNumber, tcpForwarder.HandlePacket)
 
 	udpForwarder := udp.NewForwarder(s, func(r *udp.ForwarderRequest) {
 		wq := new(waiter.Queue)
-		ep, err := CreateUDPEndpoint(wq, r)
-		id := r.ID()
-		addr := net.UDPAddr{IP: []byte(id.LocalAddress), Port: int(id.LocalPort)}
+		ep, err := netstack_hacks.CreateUDPEndpoint(wq, r)
 		if err != nil {
-			log.WithField("addr", addr).WithError(errors.New(err.String())).Error("udp endpoint not created")
+			log.WithError(errors.New(err.String())).Error("udp endpoint not created")
 			return
 		}
-		go forwardNetstackEndpoint(wq, ep, "udp", f)
+		go forwardHelper(netstack_hacks.CreatePacketConn(s, ep, wq), "udp", f)
 	})
 	s.SetTransportProtocolHandler(udp.ProtocolNumber, udpForwarder.HandlePacket)
 
 	return nil
 }
 
-func forwardNetstackEndpoint(wq *waiter.Queue, ep tcpip.Endpoint, network string, f *forwarder.Forwarder) {
-	defer ep.Close()
-	logger := GetLogger(ep).WithField("network", network)
-
-	conn := gonet.NewConn(wq, ep)
+func forwardHelper(conn net.Conn, network string, f *forwarder.Forwarder) {
+	defer func() { _ = conn.Close() }()
+	logger := makeLogger(conn).WithField("network", network)
 	logger.Info("forward from tun")
-	addr, netstackErr := ep.GetLocalAddress()
-	if netstackErr != nil {
-		logger.WithError(errors.New(netstackErr.String())).Error("error while retrieving localAddr")
-		return
-	}
-	addrString := net.JoinHostPort(net.IP([]byte(addr.Addr)).String(), strconv.Itoa(int(addr.Port)))
 
 	err := f.ForwardConnection(context.TODO(), &forwarder.ForwardRequest{
 		ClientConn: conn,
 		Network:    network,
-		Address:    addrString,
+		Address:    conn.LocalAddr().String(),
 	})
 	if err != nil {
 		logger.WithError(err).Error("forwarder returned error")
 	}
+}
+
+func makeLogger(conn net.Conn) *log.Entry {
+	return log.WithField("remote", conn.LocalAddr()).
+		WithField("local", conn.RemoteAddr()).
+		WithField("network", conn.LocalAddr().Network())
 }
 
 func init() {
