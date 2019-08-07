@@ -11,7 +11,7 @@ func CheckHost(config *Config, handler http.Handler) http.Handler {
 		return handler
 	}
 
-	return http.HandlerFunc(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Host != config.Domain {
 			log.WithFields(log.Fields{
 				"host":        r.Host,
@@ -21,5 +21,5 @@ func CheckHost(config *Config, handler http.Handler) http.Handler {
 			return
 		}
 		handler.ServeHTTP(w, r)
-	}))
+	})
 }
