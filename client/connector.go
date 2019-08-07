@@ -39,15 +39,6 @@ func (c *Connector) Connect(logger *log.Entry) (*MultiplexedConnection, error) {
 		return nil, err
 	}
 
-	if TraceNetOps {
-		conn = &connectionWrapper{
-			onDisconnect: nil,
-			responseDone: true,
-			logger:       logger.WithField("underlying_conn", true),
-			Conn:         conn,
-		}
-	}
-
 	if parsed.Scheme == "https" {
 		conn = tls.Client(conn, &tls.Config{
 			NextProtos: []string{"http/1.1"},

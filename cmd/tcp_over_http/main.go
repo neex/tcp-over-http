@@ -153,10 +153,6 @@ func main() {
 	rootCmd.PersistentFlags().StringVar(&logLevel, "loglevel", "", "loglevel")
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		if logLevel != "" {
-			if logLevel == "trace_netop" {
-				client.TraceNetOps = true
-				logLevel = "trace"
-			}
 			level, err := log.ParseLevel(logLevel)
 			if err != nil {
 				return err

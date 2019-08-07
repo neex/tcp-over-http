@@ -26,35 +26,7 @@ type connectionWrapper struct {
 
 func (cw *connectionWrapper) Read(b []byte) (n int, err error) {
 	cw.ensureResponse()
-	if !TraceNetOps {
-		return cw.Conn.Read(b)
-	}
-
-	cw.logger.Trace("read started")
-	n, err = cw.Conn.Read(b)
-	l := cw.logger.WithField("bytes_read", n)
-	if err != nil {
-		l.WithError(err).Trace("read error")
-	} else {
-		l.Trace("read finished")
-	}
-	return
-}
-
-func (cw *connectionWrapper) Write(b []byte) (n int, err error) {
-	if !TraceNetOps {
-		return cw.Conn.Write(b)
-	}
-
-	cw.logger.Trace("write started")
-	n, err = cw.Conn.Write(b)
-	l := cw.logger.WithField("bytes_written", n)
-	if err != nil {
-		l.WithError(err).Trace("write error")
-	} else {
-		l.Trace("write finished")
-	}
-	return
+	return cw.Conn.Read(b)
 }
 
 func (cw *connectionWrapper) Close() error {

@@ -7,8 +7,6 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-var TraceNetOps = false
-
 type Config struct {
 	Address                string        `yaml:"address"`
 	DNSOverride            string        `yaml:"dns_override"`
