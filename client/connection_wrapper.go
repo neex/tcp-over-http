@@ -2,12 +2,10 @@ package client
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
 	"sync"
-	"sync/atomic"
 
 	log "github.com/sirupsen/logrus"
 
@@ -15,52 +13,40 @@ import (
 )
 
 type connectionWrapper struct {
-	m            sync.Mutex
-	responseDone bool
-	disconnected uint32
-	onDisconnect func()
-	logger       *log.Entry
+	responseOnce   sync.Once
+	disconnectOnce sync.Once
+	onDisconnect   func()
+	logger         *log.Entry
 
 	net.Conn
 }
 
 func (cw *connectionWrapper) Read(b []byte) (n int, err error) {
-	cw.ensureResponse()
+	cw.responseOnce.Do(cw.ensureResponse)
 	return cw.Conn.Read(b)
 }
 
-func (cw *connectionWrapper) Close() error {
-	if atomic.SwapUint32(&cw.disconnected, 1) == 0 {
+func (cw *connectionWrapper) Close() (err error) {
+	err = cw.Conn.Close()
+	cw.disconnectOnce.Do(func() {
 		cw.logger.Info("disconnected")
 
 		if cw.onDisconnect != nil {
-			defer cw.onDisconnect()
+			cw.onDisconnect()
 		}
-	}
 
-	return cw.Conn.Close()
+	})
+	return
 }
 
 func (cw *connectionWrapper) ensureResponse() {
-	cw.m.Lock()
-	defer cw.m.Unlock()
-	if cw.responseDone {
-		return
-	}
-	cw.responseDone = true
 	cw.logger.Trace("reading initial response")
 	resp, err := protocol.ReadResponse(context.TODO(), cw.Conn)
 	if err != nil || resp.Err != nil {
-		if err == nil {
-			err = fmt.Errorf("remote: %v", *resp.Err)
+		if err != nil {
+			cw.logger.WithError(err).Warn("error while dialing")
 		} else {
-			err = fmt.Errorf("local: %v", err)
-		}
-
-		if atomic.LoadUint32(&cw.disconnected) == 0 {
-			cw.logger.WithError(err).Error("dial error")
-		} else {
-			cw.logger.Warn("close called while reading initial response")
+			cw.logger.WithError(err).Error("error while dialing")
 		}
 
 		_ = cw.Conn.Close()
