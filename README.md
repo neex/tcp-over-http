@@ -17,7 +17,7 @@ First, clone the repo and build all binaries (`go install ./...`). You may insta
 #### Server (do this before your trip)
 
 1. Buy a domain name (e.g. `example.com`).
-2. Rent a VPS. Make sure not to use any popular VPS provider (e.g. DigitalOcean/Vultr/Scaleway) as they're banned in я almost completely.
+2. Rent a VPS. Make sure not to use any popular VPS provider (e.g. DigitalOcean/Vultr/Scaleway) as they're banned in some countries almost completely.
 3. Set up DNS A record pointing to the VPS.
 4. Get a LetsEncrypt certificate using certbot (`apt install certbot && certbot -d example.com`).
 5. Get something legitimate-looking to place on your website, like free bootstrap template.
